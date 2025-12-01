@@ -7,7 +7,7 @@ cd build
 cmake ..
 cmake --build .
 ```
-之后在vs studio打开项目就可以
+之后在vs studio打开项目就可以，接着运行`main.cpp`测试库是不是都装好了
 
 *PS.assimp是在仓库直接克隆的源码；其他是下载的zip包；glm是助教给的zip包
 ```
