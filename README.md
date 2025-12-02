@@ -1,6 +1,7 @@
 # CGFinal
 ## 0 环境配置
 现已配置glfw,glew,glm,imgui,assimp库
+
 把仓库克隆下来然后在目录的命令行中运行：
 ```
 mkdir build
