@@ -18,3 +18,5 @@ https://github.com/glfw/glfw/releases/download/3.3.8/glfw-3.3.8.zip
 https://github.com/nigels-com/glew/releases/download/glew-2.2.0/glew-2.2.0.zip
 https://github.com/ocornut/imgui/archive/refs/tags/v1.90.4.zip (imgui)
 ```
+
+*PS.PS. 尽量在全英文路径下建立项目，不然环境有时候抽风找不到包（被折磨致死精神错乱版）
