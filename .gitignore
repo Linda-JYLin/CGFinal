@@ -1,0 +1,10 @@
+# Build directories
+/build/
+/out/
+
+# Visual Studio
+.vs/
+*.suo
+*.user
+*.vcxproj.filters
+*.vcxproj.user
