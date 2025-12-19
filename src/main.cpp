@@ -112,6 +112,7 @@ int main() {
         return -1;
     }
 
+    // ———————— 初始化从这开始 ———————— 
     glEnable(GL_DEPTH_TEST);
 
     // 创建着色器（需准备 .vs 和 .fs 文件）
@@ -148,7 +149,7 @@ int main() {
     };
     Skybox skybox(faces);
 
-    // 渲染循环
+    // ———————— 渲染循环 ————————
     while (!glfwWindowShouldClose(window)) {
         float currentFrame = static_cast<float>(glfwGetTime());
         deltaTime = currentFrame - lastFrame;
@@ -205,4 +206,5 @@ int main() {
 
     glfwTerminate();
     return 0;
+
 }
