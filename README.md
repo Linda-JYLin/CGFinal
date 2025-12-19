@@ -162,3 +162,5 @@ void main() {
 ### 🌟Shader
 
 `Shader`类目前好像没啥要改的。
+
+反正每次初始化它都要准备`fs`和`vs`文件。目前是天空盒一个shader,猫和车用一个shader（感觉后边要分开）
