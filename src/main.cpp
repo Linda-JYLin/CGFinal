@@ -138,7 +138,6 @@ int main() {
     Model mclaren((ASSETS_FOLDER+"car/2015 McLaren P1 GTR.glb").c_str(), (ASSETS_FOLDER + "car/texture").c_str(), carTextureMap);
 
     // 初始化、加载天空盒
-    // face
     std::vector<std::string> faces = {
         PROJECT_ROOT + "/src/assets/skybox/right.jpg",
         PROJECT_ROOT + "/src/assets/skybox/left.jpg",
