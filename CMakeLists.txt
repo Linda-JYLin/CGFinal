@@ -71,6 +71,24 @@ add_executable(${PROJECT_NAME}
     "src/main.cpp" 
     ${IMGUI_SOURCES}
 )
+
+# ================= 路径宏定义 =================
+# 工程根目录
+target_compile_definitions(${PROJECT_NAME} PRIVATE
+    PROJECT_ROOT="${CMAKE_SOURCE_DIR}"
+)
+
+# 资源目录
+target_compile_definitions(${PROJECT_NAME} PRIVATE
+    ASSETS_FOLDER="${CMAKE_SOURCE_DIR}/src/assets/"
+)
+
+# Shader 目录
+target_compile_definitions(${PROJECT_NAME} PRIVATE
+    SHADERS_FOLDER="${CMAKE_SOURCE_DIR}/src/shaders/"
+)
+
+
 # 包含目录
 target_include_directories(${PROJECT_NAME} PRIVATE
     ${imgui_SOURCE_DIR}

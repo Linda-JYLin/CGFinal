@@ -116,7 +116,7 @@ int main() {
     glEnable(GL_DEPTH_TEST);
 
     // 创建着色器（需准备 .vs 和 .fs 文件）
-    Shader ourShader((SHADERS_FOLDER + "model.vs").c_str(), (SHADERS_FOLDER + "model.fs").c_str());
+    Shader ourShader((std::string(SHADERS_FOLDER) + "model.vs").c_str(), (std::string(SHADERS_FOLDER) + "model.fs").c_str());
     
     // 初始化、加载模型
     // 准备赛车贴图
@@ -135,17 +135,17 @@ int main() {
     // 猫模型是obj和mtl所以textureMap可以为空
     std::map<std::string, std::string> cattextureMap;
 
-    Model cat1((ASSETS_FOLDER+"cat/Cat1/12221_Cat_v1_l3.obj").c_str(), (ASSETS_FOLDER + "cat/Cat1/").c_str(),cattextureMap);
-    Model mclaren((ASSETS_FOLDER+"car/2015 McLaren P1 GTR.glb").c_str(), (ASSETS_FOLDER + "car/texture").c_str(), carTextureMap);
+    Model cat1((std::string(ASSETS_FOLDER)+"cat/Cat1/12221_Cat_v1_l3.obj").c_str(), (std::string(ASSETS_FOLDER) + "cat/Cat1/").c_str(),cattextureMap);
+    Model mclaren((std::string(ASSETS_FOLDER)+"car/2015 McLaren P1 GTR.glb").c_str(), (std::string(ASSETS_FOLDER) + "car/texture").c_str(), carTextureMap);
 
     // 初始化、加载天空盒
     std::vector<std::string> faces = {
-        PROJECT_ROOT + "/src/assets/skybox/right.jpg",
-        PROJECT_ROOT + "/src/assets/skybox/left.jpg",
-        PROJECT_ROOT + "/src/assets/skybox/top.jpg",
-        PROJECT_ROOT + "/src/assets/skybox/bottom.jpg",
-        PROJECT_ROOT + "/src/assets/skybox/front.jpg",
-        PROJECT_ROOT + "/src/assets/skybox/back.jpg"
+        PROJECT_ROOT  "/src/assets/skybox/right.jpg",
+        std::string(PROJECT_ROOT) + "/src/assets/skybox/left.jpg",
+        std::string(PROJECT_ROOT)+ "/src/assets/skybox/top.jpg",
+        std::string(PROJECT_ROOT) + "/src/assets/skybox/bottom.jpg",
+        std::string(PROJECT_ROOT) + "/src/assets/skybox/front.jpg",
+        std::string(PROJECT_ROOT) + "/src/assets/skybox/back.jpg"
     };
     Skybox skybox(faces);
 

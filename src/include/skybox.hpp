@@ -12,15 +12,13 @@
 #include "include/shader.hpp"
 //#include "utils/stb_image.h"
 
-#include "include/config.hpp"
-
 
 
 class Skybox
 {
 public:
     Skybox(const std::vector<std::string>& faces)
-        :shader((SHADERS_FOLDER+"skybox.vs").c_str(), (SHADERS_FOLDER+"skybox.fs").c_str())
+        :shader((std::string(SHADERS_FOLDER)+"skybox.vs").c_str(), (std::string(SHADERS_FOLDER)+"skybox.fs").c_str())
     {
         loadCubemap(faces);
         setupSkybox();
