@@ -23,12 +23,13 @@
 #include "include/shader.hpp"
 #include "include/model.hpp"
 #include "include/skybox.hpp"
+#include "include/terrain.hpp"
 
 // ———————— 全局变量 ————————
 const unsigned int SCR_WIDTH = 800;
 const unsigned int SCR_HEIGHT = 600;
 
-Camera camera(glm::vec3(0.0f, 0.0f, 3.0f));
+Camera camera(glm::vec3(0.0f, 350.0f, 3.0f));
 bool firstMouse = true;
 float lastX = SCR_WIDTH / 2.0f;
 float lastY = SCR_HEIGHT / 2.0f;
@@ -117,6 +118,8 @@ int main() {
 
     // 创建着色器（需准备 .vs 和 .fs 文件）
     Shader ourShader((std::string(SHADERS_FOLDER) + "model.vs").c_str(), (std::string(SHADERS_FOLDER) + "model.fs").c_str());
+
+    Shader terrainShader(SHADERS_FOLDER "terrain.vs", SHADERS_FOLDER "terrain.fs");
     
     // 初始化、加载模型
     // 准备赛车贴图
@@ -149,6 +152,13 @@ int main() {
     };
     Skybox skybox(faces);
 
+    // 初始化地形
+    Terrain terrain(
+        std::string(ASSETS_FOLDER)+"heightmap.png", // PNG 高度图
+        1800.0f,                  // 最大海拔
+        1.0f                    // 每个像素代表多少米
+    );
+
     // ———————— 渲染循环 ————————
     while (!glfwWindowShouldClose(window)) {
         float currentFrame = static_cast<float>(glfwGetTime());
@@ -157,6 +167,15 @@ int main() {
 
         processInput(window);
 
+        // 设置相机贴地
+        float groundY = terrain.getHeightWorld(
+            camera.Position.x,
+            camera.Position.z
+        );
+
+        camera.Position.y = groundY + 10.0f;     // 模拟人眼高度(暂时调高便于观察）
+
+
         glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -164,7 +183,7 @@ int main() {
 
         // ------------模型可以共享的设置-------------
         // 设置 MVP
-        glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
+        glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 2.0f, 5000.0f); // 调整near和far，确保能看到远处的地形
         glm::mat4 view = camera.GetViewMatrix();
         ourShader.setMat4("projection", projection);
         ourShader.setMat4("view", view);
@@ -174,27 +193,46 @@ int main() {
         ourShader.setVec3("light.color", glm::vec3(1.0f, 1.0f, 1.0f));
 
 
+
+
         // ------------画猫的模型---------------------
+        glm::vec3 catPos(-2.0f, 0.0f, -5.0f);   // 设置猫位置
+
+        catPos.y = terrain.getHeightWorld(catPos.x, catPos.z) + 0.5f;     // 设置猫的高度：获取当前位置的地形高度+猫的原点距离脚底的距离
+
         // 设置模型矩阵
         glm::mat4 modelCat = glm::mat4(1.0f);
-        // 先旋转后平移
+        // 先旋转后平移（OpenGL中，最后写的变换，最先作用在顶点上）
+        modelCat = glm::translate(modelCat, catPos); // 放在左边
+        // 旋转因子
         modelCat = glm::rotate(modelCat, glm::radians(90.0f), glm::vec3(-1.0f, 0.0f, 0.0f));
-        // 平移因子
-        modelCat = glm::translate(modelCat, glm::vec3(-2.0f, -0.5f, -5.0f)); // 放在左边
         // 缩放因子
         modelCat = glm::scale(modelCat, glm::vec3(0.2f, 0.2f, 0.2f));
         ourShader.setMat4("model", modelCat);
         cat1.Draw(ourShader);
 
         // ------------画赛车的模型---------------------
+        glm::vec3 carPos = glm::vec3(2.0f, 0.0f, -5.0f);    // 设置赛车位置
+
+        carPos.y = terrain.getHeightWorld(carPos.x, carPos.z) + 0.4f;   //设置赛车高度：获取当前位置的地形高度+车轮半径
+
         // 设置模型矩阵
         glm::mat4 modelCar = glm::mat4(1.0f);
         // 平移因子
-        modelCar = glm::translate(modelCar, glm::vec3(2.0f, -1.0f, -5.0f)); // 放在右边，略低一点
+        modelCar = glm::translate(modelCar, carPos); // 放在右边，略低一点
         modelCar = glm::scale(modelCar, glm::vec3(0.8f, 0.8f, 0.8f));   // 赛车更小的缩放
         // 缩放因子
         ourShader.setMat4("model", modelCar);
         mclaren.Draw(ourShader);
+
+        // -------------画地形---------------------------
+        glm::mat4 modelTerrain = glm::mat4(1.0f);
+        terrainShader.use();
+        terrainShader.setMat4("model", modelTerrain);
+        terrainShader.setMat4("view", view);
+        terrainShader.setMat4("projection", projection);
+
+        terrain.Draw(terrainShader);
 
         // ------------画天空盒（最后画天空盒！！不然其它模型会被它挡住）-----------------------
         skybox.draw(view, projection);
