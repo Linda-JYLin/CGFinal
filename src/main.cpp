@@ -11,6 +11,7 @@
 #include <assimp/scene.h>
 #include <assimp/postprocess.h>
 
+#include <iostream>
 #include <vector>
 #include <string>
 #include <fstream>
@@ -64,7 +65,7 @@ void scroll_callback(GLFWwindow* window, double xoffset, double yoffset) {
     // camera.ProcessMouseScroll(static_cast<float>(yoffset));
 
     // 前后移动相机（沿视线方向）
-    camera.Position += camera.Front * static_cast<float>(yoffset) * 2.0f;
+    camera.Position += camera.Front * static_cast<float>(-yoffset) * 2.0f;
 }
 
 void processInput(GLFWwindow* window) {
