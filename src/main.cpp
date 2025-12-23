@@ -23,13 +23,13 @@
 #include "include/shader.hpp"
 #include "include/model.hpp"
 #include "include/skybox.hpp"
-#include "include/terrain.hpp"
+#include "include/terrain/terrain.hpp"
 
 // ———————— 全局变量 ————————
 const unsigned int SCR_WIDTH = 800;
 const unsigned int SCR_HEIGHT = 600;
 
-Camera camera(glm::vec3(0.0f, 350.0f, 3.0f));
+Camera camera(glm::vec3(64.0f, 1350.0f, 64.0f));
 bool firstMouse = true;
 float lastX = SCR_WIDTH / 2.0f;
 float lastY = SCR_HEIGHT / 2.0f;
@@ -118,8 +118,6 @@ int main() {
 
     // 创建着色器（需准备 .vs 和 .fs 文件）
     Shader ourShader((std::string(SHADERS_FOLDER) + "model.vs").c_str(), (std::string(SHADERS_FOLDER) + "model.fs").c_str());
-
-    Shader terrainShader(SHADERS_FOLDER "terrain.vs", SHADERS_FOLDER "terrain.fs");
     
     // 初始化、加载模型
     // 准备赛车贴图
@@ -143,21 +141,22 @@ int main() {
 
     // 初始化、加载天空盒
     std::vector<std::string> faces = {
-        PROJECT_ROOT  "/src/assets/skybox/right.jpg",
-        std::string(PROJECT_ROOT) + "/src/assets/skybox/left.jpg",
-        std::string(PROJECT_ROOT)+ "/src/assets/skybox/top.jpg",
-        std::string(PROJECT_ROOT) + "/src/assets/skybox/bottom.jpg",
-        std::string(PROJECT_ROOT) + "/src/assets/skybox/front.jpg",
-        std::string(PROJECT_ROOT) + "/src/assets/skybox/back.jpg"
+        ASSETS_FOLDER  "skybox/right.jpg",
+        ASSETS_FOLDER  "skybox/left.jpg",
+        ASSETS_FOLDER  "skybox/top.jpg",
+        ASSETS_FOLDER  "skybox/bottom.jpg",
+        ASSETS_FOLDER  "skybox/front.jpg",
+        ASSETS_FOLDER  "skybox/back.jpg"
     };
     Skybox skybox(faces);
 
     // 初始化地形
     Terrain terrain(
-        std::string(ASSETS_FOLDER)+"heightmap.png", // PNG 高度图
-        1800.0f,                  // 最大海拔
-        1.0f                    // 每个像素代表多少米
+        ASSETS_FOLDER "terrain/heightmap.png",
+        1800.0f,
+        64, 64, 33, 1.0f
     );
+    terrain.setLODDistances(200.0f, 600.0f, 1400.0f);
 
     // ———————— 渲染循环 ————————
     while (!glfwWindowShouldClose(window)) {
@@ -173,7 +172,8 @@ int main() {
             camera.Position.z
         );
 
-        camera.Position.y = groundY + 300.0f;     // 模拟人眼高度(暂时调高便于观察）
+        camera.Position.y = groundY + 10.0f;     // 模拟人眼高度(暂时调高便于观察）
+        std::cout << camera.Position.y << std::endl;
 
 
         glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
@@ -226,13 +226,7 @@ int main() {
         mclaren.Draw(ourShader);
 
         // -------------画地形---------------------------
-        glm::mat4 modelTerrain = glm::mat4(1.0f);
-        terrainShader.use();
-        terrainShader.setMat4("model", modelTerrain);
-        terrainShader.setMat4("view", view);
-        terrainShader.setMat4("projection", projection);
-
-        terrain.Draw(terrainShader);
+        terrain.render(view, projection, camera.Position);
 
         // ------------画天空盒（最后画天空盒！！不然其它模型会被它挡住）-----------------------
         skybox.draw(view, projection);
