@@ -173,7 +173,7 @@ int main() {
             camera.Position.z
         );
 
-        camera.Position.y = groundY + 10.0f;     // 模拟人眼高度(暂时调高便于观察）
+        camera.Position.y = groundY + 300.0f;     // 模拟人眼高度(暂时调高便于观察）
 
 
         glClearColor(0.1f, 0.1f, 0.1f, 1.0f);

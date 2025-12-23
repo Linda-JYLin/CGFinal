@@ -14,7 +14,7 @@ class Terrain {
 public:
     Terrain(
         const std::string& heightmapPath,
-        float heightScale = 20.0f,  // 最大海拔
+        float heightScale = 1800.0f,  // 最大海拔
         float gridScale = 1.0f  // 每个像素代表多少米
     )
         : heightScale(heightScale),
