@@ -11,7 +11,6 @@
 #include <assimp/scene.h>
 #include <assimp/postprocess.h>
 
-#include <iostream>
 #include <vector>
 #include <string>
 #include <fstream>
@@ -37,6 +36,13 @@ float lastY = SCR_HEIGHT / 2.0f;
 float deltaTime = 0.0f;
 float lastFrame = 0.0f;
 
+//补充俯视模式状态
+bool topView = false;   //是否处于俯视模式
+glm::vec3 originalCameraPos;    //保存原始相机位置
+glm::vec3 originalCameraFront;  //保存原始相机朝向
+glm::vec3 originalCameraUp;     //保存原始相机上方向
+float originalZoom;          //保存原始FOV
+
 // ———————— 回调函数 ————————
 void framebuffer_size_callback(GLFWwindow* window, int width, int height) {
     glViewport(0, 0, width, height);
@@ -57,30 +63,88 @@ void mouse_callback(GLFWwindow* window, double xposIn, double yposIn) {
     lastX = xpos;
     lastY = ypos;
 
+    if(topView)
     camera.ProcessMouseMovement(xoffset, yoffset);
 }
 
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset) {
     // 控制 Zoom（FOV）
-    // camera.ProcessMouseScroll(static_cast<float>(yoffset));
+     /*camera.ProcessMouseScroll(static_cast<float>(yoffset));*/
 
-    // 前后移动相机（沿视线方向）
-    camera.Position += camera.Front * static_cast<float>(-yoffset) * 2.0f;
+    if (topView) {
+        //滚轮调整FOV
+        camera.Zoom -= static_cast<float>(yoffset) * 1.0f;
+        if (camera.Zoom < 10.0f) camera.Zoom = 10.0f;
+        if (camera.Zoom > 200.0f) camera.Zoom = 100.0f;
+    }
+    else {
+        //沿视线前后移动
+        camera.Position += camera.Front * static_cast<float>(yoffset) * 2.0f;
+    }
 }
 
 void processInput(GLFWwindow* window) {
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
         glfwSetWindowShouldClose(window, true);
 
-    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
-        camera.ProcessKeyboard(FORWARD, deltaTime);
-    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
-        camera.ProcessKeyboard(BACKWARD, deltaTime);
-    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
-        camera.ProcessKeyboard(LEFT, deltaTime);
-    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
-        camera.ProcessKeyboard(RIGHT, deltaTime);
+    //---------------M键：切换俯视模式---------------
+    static bool mPressed = false;
+    if(glfwGetKey(window, GLFW_KEY_M) == GLFW_PRESS) {
+        if (!mPressed) {
+            topView = !topView;
 
+            if (topView) {
+                //进入俯视模式：保存当前状态
+                originalCameraPos = camera.Position;
+                originalCameraFront = camera.Front;
+                originalCameraUp = camera.Up;
+                originalZoom = camera.Zoom;
+
+                //设置高空俯视视角
+                float sceneCenterX = 0.0f;      // 猫和车的 X 中心
+                float sceneCenterZ = -5.0f;     // 猫和车的 Z 中心
+                float topViewHeight = 30.0f;    // 俯视高度（单位：米）
+
+                camera.Position = glm::vec3(sceneCenterX, topViewHeight, sceneCenterZ);
+				camera.Front = glm::vec3(0.0f, -1.0f, 0.0f);    //直视地面
+				camera.Up = glm::vec3(0.0f, 0.0f, -1.0f);       //调整上方向,避免叉积为0
+                camera.UpdateVectors();
+            }
+            else {
+                //退出俯视模式：恢复原始状态
+                camera.Position = originalCameraPos;
+                camera.Front = originalCameraFront;
+                camera.Up = originalCameraUp;
+                camera.Zoom = originalZoom;
+                camera.UpdateVectors();
+            }
+            mPressed = true;
+        }
+    }
+    else {
+        mPressed = false;
+    }
+
+    if (!topView) {
+        if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
+            camera.ProcessKeyboard(FORWARD, deltaTime);
+        if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
+            camera.ProcessKeyboard(BACKWARD, deltaTime);
+        if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
+            camera.ProcessKeyboard(LEFT, deltaTime);
+        if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
+            camera.ProcessKeyboard(RIGHT, deltaTime);
+    }
+
+    //动态切换光标状态，space键切换
+    if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
+        if(glfwGetInputMode(window, GLFW_CURSOR) == GLFW_CURSOR_DISABLED) {
+            glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+        } else {
+            glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+            firstMouse = true; //防止跳动
+		}
+    }
 }
 
 // ———————— 主函数 ————————
