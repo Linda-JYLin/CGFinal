@@ -48,20 +48,20 @@ public:
     )
     {
         // 1. 更新视锥
-        glm::mat4 viewProjModel = projection * view * model;
-        frustum.updateFromMatrix(viewProjModel);
+        glm::mat4 viewProj = projection * view;
+        frustum.updateFromMatrix(viewProj);
 
 
         // 2. 遍历 Chunk
         for (auto& chunk : chunks) {
 
             // ---- 视锥裁剪 ----
-            //if (!frustum.intersects(chunk.getAABBWorld(model)))
-            //    continue;
+            if (!frustum.intersects(chunk.getAABBWorld()))
+                continue;
 
 
             // ---- LOD 选择 ----
-            float distance = glm::distance(cameraPos, chunk.getCenter(model));
+            float distance = glm::distance(cameraPos, chunk.getCenter());
             int lod = pickLOD(distance);
 
             // ---- 绘制 ----
@@ -90,8 +90,15 @@ public:
     // ===========================================================
     float getHeightWorld(float worldX, float worldZ) const {
         // 世界坐标 → heightmap 网格坐标
-        float gridX = worldX / gridScale;
-        float gridZ = worldZ / gridScale;
+        float halfW = (heightmap.width - 1) * 0.5f;
+        float halfH = (heightmap.height - 1) * 0.5f;
+
+        //float gridX = worldX / gridScale + halfW;
+        //float gridZ = worldZ / gridScale + halfH;
+
+        float gridX = (worldX + halfW) / gridScale;
+        float gridZ = (worldZ + halfH) / gridScale;
+
 
         // 越界检查
         if (gridX < 0.0f || gridZ < 0.0f ||
@@ -125,8 +132,14 @@ public:
     glm::vec3 getNormalWorld(float worldX, float worldZ) const
     {
         // 世界 → heightmap 网格坐标
-        float gridX = worldX / gridScale;
-        float gridZ = worldZ / gridScale;
+        float halfW = (heightmap.width - 1) * 0.5f;
+        float halfH = (heightmap.height - 1) * 0.5f;
+
+        //float gridX = worldX / gridScale + halfW;
+        //float gridZ = worldZ / gridScale + halfH;
+
+        float gridX = (worldX + halfW) / gridScale;
+        float gridZ = (worldZ + halfH) / gridScale;
 
         if (gridX < 0.0f || gridZ < 0.0f ||
             gridX > heightmap.width - 1 ||

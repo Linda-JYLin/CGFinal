@@ -151,10 +151,15 @@ int main() {
     Skybox skybox(faces);
 
     // 初始化地形
+    //Terrain terrain(
+    //    ASSETS_FOLDER "terrain/heightmap_2049.png",
+    //    1800.0f,
+    //    64, 64, 33, 1.0f
+    //);
     Terrain terrain(
-        ASSETS_FOLDER "terrain/heightmap.png",
+        ASSETS_FOLDER "terrain/heightmap_4097.png",
         1800.0f,
-        64, 64, 33, 1.0f
+        128, 128, 33, 1.0f
     );
     terrain.setLODDistances(200.0f, 600.0f, 1400.0f);
 

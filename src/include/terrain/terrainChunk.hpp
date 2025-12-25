@@ -26,8 +26,8 @@ public:
 
     void Draw(Shader& shader, int lod);
 
-    AABB TerrainChunk::getAABBWorld(const glm::mat4& model) const;
-    glm::vec3 getCenter(const glm::mat4& model) const { return glm::vec3(model * glm::vec4(center, 1.0f)); }
+    AABB TerrainChunk::getAABBWorld() const { return bounds; };
+    glm::vec3 getCenter() const { return center; };
 
 private:
     void buildVertices();
@@ -136,10 +136,13 @@ void TerrainChunk::buildVertices() {
             float y = heightmap.get(hx, hz);
 
             TerrainVertex v;
+            float halfW = (heightmap.width - 1) * gridScale * 0.5f;
+            float halfH = (heightmap.height - 1) * gridScale * 0.5f;
+
             v.Position = glm::vec3(
-                hx * gridScale,
+                hx * gridScale - halfW,
                 y,
-                hz * gridScale
+                hz * gridScale - halfH
             );
 
             // 纹理坐标仍按全局 heightmap 归一化
@@ -436,29 +439,6 @@ glm::vec3 TerrainChunk::calculateNormal(int hx, int hz) const
     );
 
     return glm::normalize(n);
-}
-
-AABB TerrainChunk::getAABBWorld(const glm::mat4& model) const {
-    glm::vec3 corners[8] = {
-        {bounds.min.x, bounds.min.y, bounds.min.z},
-        {bounds.max.x, bounds.min.y, bounds.min.z},
-        {bounds.min.x, bounds.max.y, bounds.min.z},
-        {bounds.max.x, bounds.max.y, bounds.min.z},
-        {bounds.min.x, bounds.min.y, bounds.max.z},
-        {bounds.max.x, bounds.min.y, bounds.max.z},
-        {bounds.min.x, bounds.max.y, bounds.max.z},
-        {bounds.max.x, bounds.max.y, bounds.max.z},
-    };
-
-    glm::vec3 mn(FLT_MAX), mx(-FLT_MAX);
-
-    for (auto& c : corners) {
-        glm::vec3 wc = glm::vec3(model * glm::vec4(c, 1.0f));
-        mn = glm::min(mn, wc);
-        mx = glm::max(mx, wc);
-    }
-
-    return { mn, mx };
 }
 
 

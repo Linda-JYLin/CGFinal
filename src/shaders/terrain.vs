@@ -13,7 +13,6 @@ out VS_OUT {
 uniform mat4 model;
 uniform mat4 view;
 uniform mat4 projection;
-uniform float skirtDepth;
 
 
 void main()

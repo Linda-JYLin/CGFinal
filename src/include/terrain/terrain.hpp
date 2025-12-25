@@ -56,16 +56,14 @@ private:
     Shader terrainShader;
 
     unsigned int grassTex = 0;
-    unsigned int rockTex = 0;
+    //unsigned int rockTex = 0;
     unsigned int snowTex = 0;
     unsigned int noiseTex = 0;
 
     // Uniform parameters (可设为成员变量或外部传入)
     float uvScale = 32.0f;
-    float grassMaxHeight = 200.0f;
-    float snowMinHeight = 600.0f;
-    float rockSlopeStart = 0.6f;
-    float rockSlopeEnd = 0.85f;
+    float grassMaxHeight = 1050.0f;
+    float snowMinHeight = 1120.0f;
     float noiseScale = 0.05f;
     float noiseStrength = 60.0f;
 };
@@ -81,25 +79,27 @@ Terrain::Terrain(
 {
     loadTextures();
     setupShader();
-    std::cout << "heightmap w,h = " << heightmap.width << "," << heightmap.height << "\n";
-    std::cout << "terrain world size approx = "
-        << (8 * (33 - 1) * 1.0f) << " x " << (8 * (33 - 1) * 1.0f) << "\n";
 }
 
 void Terrain::loadTextures() {
     // ------------- 加载地形纹理 ---------------------
-    grassTex = loadTexture2D(ASSETS_FOLDER "terrain/grass_diff.png");
-    rockTex = loadTexture2D(ASSETS_FOLDER "terrain/rock_diff.png");
-    snowTex = loadTexture2D(ASSETS_FOLDER "terrain/snow_diff.png");
+    grassTex = loadTexture2D(ASSETS_FOLDER "terrain/grass_diff_2.png");
+    snowTex = loadTexture2D(ASSETS_FOLDER "terrain/forest_leaves_diff.png");
     noiseTex = loadTexture2D(ASSETS_FOLDER "terrain/noise.png");
 }
 
 void Terrain::setupShader() {
     terrainShader.use();
     terrainShader.setInt("grassTex", 0);
-    terrainShader.setInt("rockTex", 1);
-    terrainShader.setInt("snowTex", 2);
-    terrainShader.setInt("noiseTex", 3);
+    //terrainShader.setInt("rockTex", 1);
+    terrainShader.setInt("snowTex", 1);
+    terrainShader.setInt("noiseTex", 2);
+
+    terrainShader.setFloat("uvScale", uvScale);
+    terrainShader.setFloat("grassMaxHeight", grassMaxHeight);
+    terrainShader.setFloat("snowMinHeight", snowMinHeight);
+    terrainShader.setFloat("noiseScale", noiseScale);
+    terrainShader.setFloat("noiseStrength", noiseStrength);
 }
 
 void Terrain::setLODDistances(float d0, float d1, float d2) {
@@ -108,31 +108,24 @@ void Terrain::setLODDistances(float d0, float d1, float d2) {
 
 void Terrain::render(const glm::mat4& view, const glm::mat4& projection, const glm::vec3& cameraPos) {
     terrainShader.use();
-    glm::mat4 model = glm::translate(
-        glm::mat4(1.0f),
-        glm::vec3(
-            -0.5f * terrainSystem.getWorldSizeX(),
-            0.0f,
-            -0.5f * terrainSystem.getWorldSizeZ()
-        )
-    );
+    glm::mat4 model = glm::mat4(1.0f);
     terrainShader.setMat4("model", model);
     terrainShader.setMat4("view", view);
     terrainShader.setMat4("projection", projection);
 
-    terrainShader.setFloat("uvScale", uvScale);
-    terrainShader.setFloat("grassMaxHeight", grassMaxHeight);
-    terrainShader.setFloat("snowMinHeight", snowMinHeight);
-    terrainShader.setFloat("rockSlopeStart", rockSlopeStart);
-    terrainShader.setFloat("rockSlopeEnd", rockSlopeEnd);
-    terrainShader.setFloat("noiseScale", noiseScale);
-    terrainShader.setFloat("noiseStrength", noiseStrength);
+
+    // 光照参数（方向光，世界空间）
+    glm::vec3 lightDir = glm::normalize(glm::vec3(-0.3f, -1.0f, -0.4f));
+    glm::vec3 lightColor = glm::vec3(1.0f);
+    terrainShader.setVec3("lightDir", lightDir);
+    terrainShader.setVec3("lightColor", lightColor);
+
 
     // Bind textures
     glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, grassTex);
-    glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, rockTex);
-    glActiveTexture(GL_TEXTURE2); glBindTexture(GL_TEXTURE_2D, snowTex);
-    glActiveTexture(GL_TEXTURE3); glBindTexture(GL_TEXTURE_2D, noiseTex);
+    //glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, rockTex);
+    glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, snowTex);
+    glActiveTexture(GL_TEXTURE2); glBindTexture(GL_TEXTURE_2D, noiseTex);
 
     terrainSystem.Draw(
         terrainShader,
@@ -162,7 +155,7 @@ float  Terrain::getSlopeDegrees(float worldX, float worldZ) const {
 // ---------------- Destructor ----------------
 Terrain::~Terrain() {
     glDeleteTextures(1, &grassTex);
-    glDeleteTextures(1, &rockTex);
+    //glDeleteTextures(1, &rockTex);
     glDeleteTextures(1, &snowTex);
     glDeleteTextures(1, &noiseTex);
 }
