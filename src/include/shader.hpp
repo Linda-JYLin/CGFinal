@@ -103,7 +103,7 @@ public:
             glGetUniformLocation(ID, name.c_str()),
             1,
             GL_FALSE,
-            glm::value_ptr(mat)
+           &mat[0][0]
         );
     }
 

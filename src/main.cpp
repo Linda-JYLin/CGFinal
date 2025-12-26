@@ -179,6 +179,8 @@ int main() {
 
     // ———————— 初始化从这开始 ———————— 
     glEnable(GL_DEPTH_TEST);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
     // 创建着色器（需准备 .vs 和 .fs 文件）
     Shader ourShader((std::string(SHADERS_FOLDER) + "model.vs").c_str(), (std::string(SHADERS_FOLDER) + "model.fs").c_str());
@@ -187,7 +189,7 @@ int main() {
     
     // 初始化、加载模型
     // 准备赛车贴图
-    std::map<std::string, std::string> carTextureMap = {
+    /*std::map<std::string, std::string> carTextureMap = {
         {"*0", "2015_mclaren_p1_gtr_wheel.etc_0.png"},
         {"*1", "car_tyre_slick_pirelli_02.etc_1.png"},
         {"*2", "2015_mclaren_p1_gtr_misc.etc_2.png"},
@@ -198,12 +200,13 @@ int main() {
         {"*7", "2015_mclaren_p1_gtr_lights.etc_7.png"},
         {"*8", "2015_mclaren_p1_gtr_badges.etc_8.png"},
         {"*9", "car_chassis.etc_9.png"}
-    };
+    };*/
+    std::map<std::string, std::string> carTextureMap;
     // 猫模型是obj和mtl所以textureMap可以为空
     std::map<std::string, std::string> cattextureMap;
 
-    Model cat1((std::string(ASSETS_FOLDER)+"cat/Cat1/12221_Cat_v1_l3.obj").c_str(), (std::string(ASSETS_FOLDER) + "cat/Cat1/").c_str(),cattextureMap);
-    Model mclaren((std::string(ASSETS_FOLDER)+"car/2015 McLaren P1 GTR.glb").c_str(), (std::string(ASSETS_FOLDER) + "car/texture").c_str(), carTextureMap);
+    Model cat1((std::string(ASSETS_FOLDER)+"cat/Cat1/12221_Cat_v1_l3.obj").c_str(), (std::string(ASSETS_FOLDER) + "cat/Cat1/").c_str());
+    Model mclaren((std::string(ASSETS_FOLDER)+"car/f1_2025_mclaren_mcl39.glb").c_str(), (std::string(ASSETS_FOLDER) + "car/").c_str());
 
     // 初始化、加载天空盒
     std::vector<std::string> faces = {
@@ -273,21 +276,21 @@ int main() {
         // 缩放因子
         modelCat = glm::scale(modelCat, glm::vec3(0.2f, 0.2f, 0.2f));
         ourShader.setMat4("model", modelCat);
-        cat1.Draw(ourShader);
+        cat1.Draw(ourShader, modelCat);
 
         // ------------画赛车的模型---------------------
         glm::vec3 carPos = glm::vec3(2.0f, 0.0f, -5.0f);    // 设置赛车位置
 
-        carPos.y = terrain.getHeightWorld(carPos.x, carPos.z) + 0.4f;   //设置赛车高度：获取当前位置的地形高度+车轮半径
+        carPos.y = terrain.getHeightWorld(carPos.x, carPos.z) + 5.0f;   //设置赛车高度：获取当前位置的地形高度+车轮半径
 
         // 设置模型矩阵
         glm::mat4 modelCar = glm::mat4(1.0f);
         // 平移因子
         modelCar = glm::translate(modelCar, carPos); // 放在右边，略低一点
-        modelCar = glm::scale(modelCar, glm::vec3(0.8f, 0.8f, 0.8f));   // 赛车更小的缩放
+        modelCar = glm::scale(modelCar, glm::vec3(1.0f, 1.0f, 1.0f));   // 赛车更小的缩放
         // 缩放因子
         ourShader.setMat4("model", modelCar);
-        mclaren.Draw(ourShader);
+        mclaren.Draw(ourShader, modelCar);
 
         // -------------画地形---------------------------
         glm::mat4 modelTerrain = glm::mat4(1.0f);
