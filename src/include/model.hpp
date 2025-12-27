@@ -93,7 +93,7 @@ unsigned int TextureFromFile(const char* path, const std::string& directory) {
 
     unsigned int textureID;
     glGenTextures(1, &textureID);
-
+    
     int width, height, nrComponents;
     // 注意：stbi_load 不支持 .etc_x.png 这种非标准的文件名，它只看文件内容。
     // 如果您的纹理是 ETC 压缩格式并使用 stb_image 加载，可能会失败。
@@ -142,6 +142,10 @@ unsigned int TextureFromMemory(const aiTexture* aiTex) {
 
     if (aiTex->mHeight == 0) {
         // 数据是压缩格式 (PNG/JPG)，使用 stb_image 从内存解码
+        // 关键：加载 GLB 内嵌贴图时，必须关闭 stbi 的垂直翻转
+        // 因为 GLTF 规范的纹理数据已经是按左上角原点排列的
+        stbi_set_flip_vertically_on_load(false);
+
         data = stbi_load_from_memory(reinterpret_cast<unsigned char*>(aiTex->pcData), aiTex->mWidth, &width, &height, &nrComponents, 0);
     }
     else {
@@ -162,7 +166,7 @@ unsigned int TextureFromMemory(const aiTexture* aiTex) {
         glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
         glGenerateMipmap(GL_TEXTURE_2D);
 
-        // 设置参数以确保能显示
+        // 设置参数以确保能显示（GLB贴图通常需要使用CLAMP_TO_EDGE防止缝隙）
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
@@ -212,12 +216,18 @@ public:
 
 private:
     void loadModel(const std::string& path) {
+        // 检查是否为GLB
+        bool isGLB = (path.find(".glb") != std::string::npos || path.find(".gltf") != std::string::npos);
+
+        unsigned int flags = aiProcess_Triangulate | aiProcess_GenSmoothNormals | aiProcess_CalcTangentSpace;
+
+        //if (!isGLB) {
+        //    flags |= aiProcess_FlipUVs; // 只有非 GLB (如 OBJ) 才开启 Assimp 翻转
+        //}
+
         // 步骤 1：验证问题时，可以添加 aiProcess_PreTransformVertices
         // 但为了后续能让赛车“动起来”，我们不使用它，而是通过代码处理变换
-        scene = importer.ReadFile(path,
-            aiProcess_Triangulate |
-            aiProcess_GenSmoothNormals |
-            aiProcess_CalcTangentSpace);
+        scene = importer.ReadFile(path, flags);
 
         if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
             std::cout << "Assimp error: " << importer.GetErrorString() << std::endl;
@@ -227,12 +237,12 @@ private:
 
         // 必须清空，防止多次加载/残留
         meshes.clear();
-
+        processNode(scene->mRootNode, scene, isGLB);
         // 步骤 2：预处理所有 Mesh 并存入 meshes 数组
         // 注意：这里需要确保 meshes 的索引与 scene->mMeshes 一一对应
-        for (unsigned int i = 0; i < scene->mNumMeshes; i++) {
+        /*for (unsigned int i = 0; i < scene->mNumMeshes; i++) {
             meshes.push_back(processMesh(scene->mMeshes[i], scene));
-        }
+        }*/
     }
 
     // --- 核心修复：递归处理变换矩阵并绘制 ---
@@ -279,17 +289,17 @@ private:
         return to;
     }
 
-    void processNode(aiNode* node, const aiScene* scene) {
+    void processNode(aiNode* node, const aiScene* scene, bool isGLB) {
         for (unsigned int i = 0; i < node->mNumMeshes; i++) {
             aiMesh* mesh = scene->mMeshes[node->mMeshes[i]];
-            meshes.push_back(processMesh(mesh, scene));
+            meshes.push_back(processMesh(mesh, scene, isGLB));
         }
         for (unsigned int i = 0; i < node->mNumChildren; i++) {
-            processNode(node->mChildren[i], scene);
+            processNode(node->mChildren[i], scene, isGLB);
         }
     }
 
-    Mesh processMesh(aiMesh* mesh, const aiScene* scene) {
+    Mesh processMesh(aiMesh* mesh, const aiScene* scene, bool isGLB) {
         std::vector<Vertex> vertices;
         std::vector<unsigned int> indices;
         std::vector<Texture> textures;
@@ -302,11 +312,21 @@ private:
             // 法线
             if (mesh->mNormals)
                 vertex.Normal = glm::vec3(mesh->mNormals[i].x, mesh->mNormals[i].y, mesh->mNormals[i].z);
-            else
-                vertex.Normal = glm::vec3(0.0f, 1.0f, 0.0f);
+           /* else
+                vertex.Normal = glm::vec3(0.0f, 1.0f, 0.0f);*/
             // 纹理坐标 (仅处理第一组 UV)
             if (mesh->mTextureCoords[0]) {
-                vertex.TexCoords = glm::vec2(mesh->mTextureCoords[0][i].x, mesh->mTextureCoords[0][i].y);
+                float u = mesh->mTextureCoords[0][i].x;
+                float v = mesh->mTextureCoords[0][i].y;
+
+                // --- 这里的逻辑解决了 OBJ 和 GLB 的冲突 ---
+                if (!isGLB) {
+                    // 如果是 OBJ，手动反转 V。因为我们 stbi 不翻转图片，
+                    // 所以在这里翻转坐标，猫就能保持正常。
+                    v = 1.0f - v;
+                }
+                // 如果是 GLB，v 保持原样，正好匹配 GLTF 的左上角规范。
+                vertex.TexCoords = glm::vec2(u, v);
             }
             else {
                 vertex.TexCoords = glm::vec2(0.0f, 0.0f);

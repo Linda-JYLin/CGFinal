@@ -27,6 +27,8 @@
 // ———————— 全局变量 ————————
 const unsigned int SCR_WIDTH = 800;
 const unsigned int SCR_HEIGHT = 600;
+bool cursorLocked = false;   // 默认锁定鼠标并控制视角
+float eyeHeight = 10.0f;    // 初始相机高度
 
 Camera camera(glm::vec3(0.0f, 350.0f, 3.0f));
 bool firstMouse = true;
@@ -49,6 +51,13 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height) {
 }
 
 void mouse_callback(GLFWwindow* window, double xposIn, double yposIn) {
+    if (!cursorLocked) {
+        // 如果没有锁定鼠标，仅仅记录坐标，不更新相机视角
+        lastX = static_cast<float>(xposIn);
+        lastY = static_cast<float>(yposIn);
+        return;
+    }
+        
     float xpos = static_cast<float>(xposIn);
     float ypos = static_cast<float>(yposIn);
 
@@ -63,7 +72,7 @@ void mouse_callback(GLFWwindow* window, double xposIn, double yposIn) {
     lastX = xpos;
     lastY = ypos;
 
-    if(topView)
+    if(!topView)
     camera.ProcessMouseMovement(xoffset, yoffset);
 }
 
@@ -87,63 +96,56 @@ void processInput(GLFWwindow* window) {
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
         glfwSetWindowShouldClose(window, true);
 
-    //---------------M键：切换俯视模式---------------
+    // --- 1. M键：切换俯视模式 ---
     static bool mPressed = false;
-    if(glfwGetKey(window, GLFW_KEY_M) == GLFW_PRESS) {
+    if (glfwGetKey(window, GLFW_KEY_M) == GLFW_PRESS) {
         if (!mPressed) {
             topView = !topView;
-
             if (topView) {
-                //进入俯视模式：保存当前状态
                 originalCameraPos = camera.Position;
                 originalCameraFront = camera.Front;
                 originalCameraUp = camera.Up;
                 originalZoom = camera.Zoom;
-
-                //设置高空俯视视角
-                float sceneCenterX = 0.0f;      // 猫和车的 X 中心
-                float sceneCenterZ = -5.0f;     // 猫和车的 Z 中心
-                float topViewHeight = 30.0f;    // 俯视高度（单位：米）
-
-                camera.Position = glm::vec3(sceneCenterX, topViewHeight, sceneCenterZ);
-				camera.Front = glm::vec3(0.0f, -1.0f, 0.0f);    //直视地面
-				camera.Up = glm::vec3(0.0f, 0.0f, -1.0f);       //调整上方向,避免叉积为0
-                camera.UpdateVectors();
+                camera.Position = glm::vec3(0.0f, 30.0f, -5.0f);
+                camera.Front = glm::vec3(0.0f, -1.0f, 0.0f);
+                camera.Up = glm::vec3(0.0f, 0.0f, -1.0f);
             }
             else {
-                //退出俯视模式：恢复原始状态
                 camera.Position = originalCameraPos;
                 camera.Front = originalCameraFront;
                 camera.Up = originalCameraUp;
                 camera.Zoom = originalZoom;
-                camera.UpdateVectors();
             }
+            camera.UpdateVectors();
             mPressed = true;
         }
     }
-    else {
-        mPressed = false;
-    }
+    else { mPressed = false; }
 
+    // --- 2. 左Alt键：控制鼠标视角锁定 ---
+    static bool altPressed = false;
+    if (glfwGetKey(window, GLFW_KEY_LEFT_ALT) == GLFW_PRESS) {
+        if (!altPressed) {
+            cursorLocked = !cursorLocked;
+            glfwSetInputMode(window, GLFW_CURSOR, cursorLocked ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL);
+            firstMouse = true;
+            altPressed = true;
+        }
+    }
+    else { altPressed = false; }
+
+    // --- 3. WASDQE 移动控制 (非俯视模式生效) ---
     if (!topView) {
-        if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
-            camera.ProcessKeyboard(FORWARD, deltaTime);
-        if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
-            camera.ProcessKeyboard(BACKWARD, deltaTime);
-        if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
-            camera.ProcessKeyboard(LEFT, deltaTime);
-        if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
-            camera.ProcessKeyboard(RIGHT, deltaTime);
-    }
+        // WASD 移动
+        if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) camera.ProcessKeyboard(FORWARD, deltaTime);
+        if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) camera.ProcessKeyboard(BACKWARD, deltaTime);
+        if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) camera.ProcessKeyboard(LEFT, deltaTime);
+        if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) camera.ProcessKeyboard(RIGHT, deltaTime);
 
-    //动态切换光标状态，space键切换
-    if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
-        if(glfwGetInputMode(window, GLFW_CURSOR) == GLFW_CURSOR_DISABLED) {
-            glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
-        } else {
-            glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-            firstMouse = true; //防止跳动
-		}
+        // QE 修改相对于地面的高度
+        float speed = camera.MovementSpeed * deltaTime;
+        if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS) eyeHeight += speed;
+        if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS) eyeHeight -= speed;
     }
 }
 
@@ -168,7 +170,7 @@ int main() {
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
     glfwSetCursorPosCallback(window, mouse_callback);
     glfwSetScrollCallback(window, scroll_callback);
-    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
 
     // 初始化 GLEW
     glewExperimental = GL_TRUE;
@@ -234,13 +236,21 @@ int main() {
 
         processInput(window);
 
-        // 设置相机贴地
-        float groundY = terrain.getHeightWorld(
-            camera.Position.x,
-            camera.Position.z
-        );
+        if (!topView) {
+            // 获取当前位置的地形高度
+            float groundY = terrain.getHeightWorld(camera.Position.x, camera.Position.z);
 
-        camera.Position.y = groundY + 10.0f;     // 模拟人眼高度(暂时调高便于观察）
+            // 关键：相机的 Y = 当前地形高度 + 我们的手动偏移量
+            camera.Position.y = groundY + eyeHeight;
+        }
+
+        // 设置相机贴地
+        //float groundY = terrain.getHeightWorld(
+        //    camera.Position.x,
+        //    camera.Position.z
+        //);
+
+        //camera.Position.y = groundY + 10.0f;     // 模拟人眼高度(暂时调高便于观察）
 
 
         glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
