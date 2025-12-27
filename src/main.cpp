@@ -22,7 +22,7 @@
 #include "include/shader.hpp"
 #include "include/model.hpp"
 #include "include/skybox.hpp"
-#include "include/terrain.hpp"
+#include "include/terrain/terrain.hpp"
 
 // ———————— 全局变量 ————————
 const unsigned int SCR_WIDTH = 800;
@@ -30,7 +30,7 @@ const unsigned int SCR_HEIGHT = 600;
 bool cursorLocked = false;   // 默认锁定鼠标并控制视角
 float eyeHeight = 10.0f;    // 初始相机高度
 
-Camera camera(glm::vec3(0.0f, 350.0f, 3.0f));
+Camera camera(glm::vec3(0.0f, eyeHeight, 5.0f));
 bool firstMouse = true;
 float lastX = SCR_WIDTH / 2.0f;
 float lastY = SCR_HEIGHT / 2.0f;
@@ -186,23 +186,7 @@ int main() {
 
     // 创建着色器（需准备 .vs 和 .fs 文件）
     Shader ourShader((std::string(SHADERS_FOLDER) + "model.vs").c_str(), (std::string(SHADERS_FOLDER) + "model.fs").c_str());
-
-    Shader terrainShader(SHADERS_FOLDER "terrain.vs", SHADERS_FOLDER "terrain.fs");
     
-    // 初始化、加载模型
-    // 准备赛车贴图
-    /*std::map<std::string, std::string> carTextureMap = {
-        {"*0", "2015_mclaren_p1_gtr_wheel.etc_0.png"},
-        {"*1", "car_tyre_slick_pirelli_02.etc_1.png"},
-        {"*2", "2015_mclaren_p1_gtr_misc.etc_2.png"},
-        {"*3", "car_rotor_03.etc_3.png"},
-        {"*4", "car_windows.etc_4.png"},
-        {"*5", "2015_mclaren_p1_gtr_ext_51.etc_5.png"},
-        {"*6", "2015_mclaren_p1_gtr_cab.etc_6.png"},
-        {"*7", "2015_mclaren_p1_gtr_lights.etc_7.png"},
-        {"*8", "2015_mclaren_p1_gtr_badges.etc_8.png"},
-        {"*9", "car_chassis.etc_9.png"}
-    };*/
     std::map<std::string, std::string> carTextureMap;
     // 猫模型是obj和mtl所以textureMap可以为空
     std::map<std::string, std::string> cattextureMap;
@@ -212,21 +196,27 @@ int main() {
 
     // 初始化、加载天空盒
     std::vector<std::string> faces = {
-        PROJECT_ROOT  "/src/assets/skybox/right.jpg",
-        std::string(PROJECT_ROOT) + "/src/assets/skybox/left.jpg",
-        std::string(PROJECT_ROOT)+ "/src/assets/skybox/top.jpg",
-        std::string(PROJECT_ROOT) + "/src/assets/skybox/bottom.jpg",
-        std::string(PROJECT_ROOT) + "/src/assets/skybox/front.jpg",
-        std::string(PROJECT_ROOT) + "/src/assets/skybox/back.jpg"
+        ASSETS_FOLDER  "skybox/right.jpg",
+        ASSETS_FOLDER  "skybox/left.jpg",
+        ASSETS_FOLDER  "skybox/top.jpg",
+        ASSETS_FOLDER  "skybox/bottom.jpg",
+        ASSETS_FOLDER  "skybox/front.jpg",
+        ASSETS_FOLDER  "skybox/back.jpg"
     };
     Skybox skybox(faces);
 
     // 初始化地形
+    //Terrain terrain(
+    //    ASSETS_FOLDER "terrain/heightmap_2049.png",
+    //    1800.0f,
+    //    64, 64, 33, 1.0f
+    //);
     Terrain terrain(
-        std::string(ASSETS_FOLDER)+"heightmap.png", // PNG 高度图
-        1800.0f,                  // 最大海拔
-        1.0f                    // 每个像素代表多少米
+        ASSETS_FOLDER "terrain/heightmap_4097.png",
+        1800.0f,
+        128, 128, 33, 1.0f
     );
+    terrain.setLODDistances(200.0f, 600.0f, 1400.0f);
 
     // ———————— 渲染循环 ————————
     while (!glfwWindowShouldClose(window)) {
@@ -303,13 +293,7 @@ int main() {
         mclaren.Draw(ourShader, modelCar);
 
         // -------------画地形---------------------------
-        glm::mat4 modelTerrain = glm::mat4(1.0f);
-        terrainShader.use();
-        terrainShader.setMat4("model", modelTerrain);
-        terrainShader.setMat4("view", view);
-        terrainShader.setMat4("projection", projection);
-
-        terrain.Draw(terrainShader);
+        terrain.render(view, projection, camera.Position);
 
         // ------------画天空盒（最后画天空盒！！不然其它模型会被它挡住）-----------------------
         skybox.draw(view, projection);
