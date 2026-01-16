@@ -30,31 +30,29 @@ public:
     }
 
     void Draw(Shader& shader) {
-        unsigned int diffuseNr = 1;
+        shader.setVec3("Material_baseColor", baseColor);
         bool hasDiffuseMap = false;
 
-        // 向shader传递颜色
-        shader.setVec3("Material_baseColor", baseColor);
-
-        // 绑定纹理
+        // 只需要找到【第一张】漫反射贴图即可，因为你的 Shader 目前只支持一个采样器
         for (unsigned int i = 0; i < textures.size(); i++) {
-            glActiveTexture(GL_TEXTURE0 + i); // 激活相应的纹理单元
+            glActiveTexture(GL_TEXTURE0 + i);
             std::string name = textures[i].type;
-            if (name == "texture_diffuse") {
+
+            // 关键逻辑：无论模型里有多少贴图，我们只把类型为 "texture_diffuse" 
+            // 且是第一张发现的贴图绑定给 shader 里的 texture_diffuse1
+            if (!hasDiffuseMap && name == "texture_diffuse") {
+                shader.setInt("texture_diffuse1", i); // 这里的 i 是纹理单元索引
                 hasDiffuseMap = true;
-                shader.setInt("texture_diffuse1", i);
             }
+
             glBindTexture(GL_TEXTURE_2D, textures[i].id);
         }
 
         shader.setBool("hasTexture", hasDiffuseMap);
 
-        // 绘制 Mesh
         glBindVertexArray(VAO);
         glDrawElements(GL_TRIANGLES, static_cast<unsigned int>(indices.size()), GL_UNSIGNED_INT, 0);
         glBindVertexArray(0);
-
-        // 重置/清理状态
         glActiveTexture(GL_TEXTURE0);
     }
 
@@ -133,7 +131,7 @@ unsigned int TextureFromFile(const char* path, const std::string& directory) {
 
 unsigned int TextureFromMemory(const aiTexture* aiTex) {
     if (!aiTex) return 0;
-    
+
     unsigned int textureID;
     glGenTextures(1, &textureID);
 
@@ -141,34 +139,37 @@ unsigned int TextureFromMemory(const aiTexture* aiTex) {
     unsigned char* data = nullptr;
 
     if (aiTex->mHeight == 0) {
-        // 数据是压缩格式 (PNG/JPG)，使用 stb_image 从内存解码
-        // 关键：加载 GLB 内嵌贴图时，必须关闭 stbi 的垂直翻转
-        // 因为 GLTF 规范的纹理数据已经是按左上角原点排列的
+        // GLB 通常走这里：数据是压缩格式 (PNG/JPG)
+        // 关键：GLTF 贴图标准是左上角。我们在加载时不翻转，
+        // 配合顶点处理中的 v = v 逻辑。
         stbi_set_flip_vertically_on_load(false);
-
         data = stbi_load_from_memory(reinterpret_cast<unsigned char*>(aiTex->pcData), aiTex->mWidth, &width, &height, &nrComponents, 0);
     }
     else {
-        // 数据是原始格式 (RGBA)
-        data = reinterpret_cast<unsigned char*>(aiTex->pcData);
+        // 原始数据格式
         width = aiTex->mWidth;
         height = aiTex->mHeight;
+        data = reinterpret_cast<unsigned char*>(aiTex->pcData);
         nrComponents = 4;
     }
 
     if (data) {
-        GLenum format = (nrComponents == 1) ? GL_RED : (nrComponents == 3 ? GL_RGB : GL_RGBA);
+        GLenum format = GL_RGBA;
+        if (nrComponents == 1) format = GL_RED;
+        else if (nrComponents == 3) format = GL_RGB;
+        else if (nrComponents == 4) format = GL_RGBA;
 
         glBindTexture(GL_TEXTURE_2D, textureID);
-        // 关键修复：解决某些图片宽度不是4的倍数导致的崩溃
+
+        // 【关键修复 1】：强制 1 字节对齐，防止宽度非 4 倍数导致的斜切/错位
         glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 
         glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
         glGenerateMipmap(GL_TEXTURE_2D);
 
-        // 设置参数以确保能显示（GLB贴图通常需要使用CLAMP_TO_EDGE防止缝隙）
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        // 【关键修复 2】：对于 GLB 这种紧凑贴图，强烈建议使用 CLAMP_TO_EDGE
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
@@ -219,11 +220,8 @@ private:
         // 检查是否为GLB
         bool isGLB = (path.find(".glb") != std::string::npos || path.find(".gltf") != std::string::npos);
 
-        unsigned int flags = aiProcess_Triangulate | aiProcess_GenSmoothNormals | aiProcess_CalcTangentSpace;
+        unsigned int flags = aiProcess_Triangulate | aiProcess_GenSmoothNormals | aiProcess_CalcTangentSpace | aiProcess_FlipUVs;
 
-        //if (!isGLB) {
-        //    flags |= aiProcess_FlipUVs; // 只有非 GLB (如 OBJ) 才开启 Assimp 翻转
-        //}
 
         // 步骤 1：验证问题时，可以添加 aiProcess_PreTransformVertices
         // 但为了后续能让赛车“动起来”，我们不使用它，而是通过代码处理变换
@@ -238,39 +236,18 @@ private:
         // 必须清空，防止多次加载/残留
         meshes.clear();
         processNode(scene->mRootNode, scene, isGLB);
-        // 步骤 2：预处理所有 Mesh 并存入 meshes 数组
-        // 注意：这里需要确保 meshes 的索引与 scene->mMeshes 一一对应
-        /*for (unsigned int i = 0; i < scene->mNumMeshes; i++) {
-            meshes.push_back(processMesh(scene->mMeshes[i], scene));
-        }*/
+        
     }
 
-    // --- 核心修复：递归处理变换矩阵并绘制 ---
-    //void drawNode(aiNode* node, Shader& shader, glm::mat4 parentTransform) {
-    //    // 1. 将 Assimp 变换矩阵转换为 GLM 矩阵
-    //    glm::mat4 nodeTransform = convertMatrixToGLM(node->mTransformation);
 
-    //    // 2. 计算当前节点的全局变换（父节点矩阵 * 当前节点矩阵）
-    //    glm::mat4 globalTransform = parentTransform * nodeTransform;
+    void drawNode(aiNode* node, Shader& shader, glm::mat4 parentTransform) {
+        glm::mat4 nodeTransform = convertMatrixToGLM(node->mTransformation);
+        glm::mat4 globalTransform = parentTransform * nodeTransform;
 
-    //    // 3. 绘制该节点下的所有 Mesh
-    //    for (unsigned int i = 0; i < node->mNumMeshes; i++) {
-    //        // node->mMeshes 存储的是该节点引用的 scene->mMeshes 的索引
-    //        unsigned int meshIndex = node->mMeshes[i];
-
-    //        // 将最终的矩阵传给 Shader 的 "model" uniform
-    //        shader.setMat4("model", globalTransform);
-    //        meshes[meshIndex].Draw(shader);
-    //    }
-
-        void drawNode(aiNode* node, Shader& shader, glm::mat4 parentTransform) {
-            glm::mat4 nodeTransform = convertMatrixToGLM(node->mTransformation);
-            glm::mat4 globalTransform = parentTransform * nodeTransform;
-
-            for (unsigned int i = 0; i < node->mNumMeshes; i++) {
-                shader.setMat4("model", globalTransform); // 这里现在会包含 main 传进来的 baseTransform
-                meshes[node->mMeshes[i]].Draw(shader);
-            }
+        for (unsigned int i = 0; i < node->mNumMeshes; i++) {
+            shader.setMat4("model", globalTransform); // 这里现在会包含 main 传进来的 baseTransform
+            meshes[node->mMeshes[i]].Draw(shader);
+        }
 
         // 4. 递归处理子节点
         for (unsigned int i = 0; i < node->mNumChildren; i++) {
@@ -315,18 +292,18 @@ private:
            /* else
                 vertex.Normal = glm::vec3(0.0f, 1.0f, 0.0f);*/
             // 纹理坐标 (仅处理第一组 UV)
+            // 在 processMesh 函数的纹理坐标循环中：
             if (mesh->mTextureCoords[0]) {
-                float u = mesh->mTextureCoords[0][i].x;
-                float v = mesh->mTextureCoords[0][i].y;
+                glm::vec2 vec;
+                vec.x = mesh->mTextureCoords[0][i].x;
+                vec.y = mesh->mTextureCoords[0][i].y;
 
-                // --- 这里的逻辑解决了 OBJ 和 GLB 的冲突 ---
-                if (!isGLB) {
-                    // 如果是 OBJ，手动反转 V。因为我们 stbi 不翻转图片，
-                    // 所以在这里翻转坐标，猫就能保持正常。
-                    v = 1.0f - v;
-                }
-                // 如果是 GLB，v 保持原样，正好匹配 GLTF 的左上角规范。
-                vertex.TexCoords = glm::vec2(u, v);
+                // 如果你在加载图片时 stbi_set_flip_vertically_on_load(false);
+                // 那么对于 GLB，这里通常不需要处理。
+                // 如果发现贴图上下颠倒，请将下一行取消注释：
+                // vec.y = 1.0f - vec.y; 
+
+                vertex.TexCoords = vec;
             }
             else {
                 vertex.TexCoords = glm::vec2(0.0f, 0.0f);
@@ -343,27 +320,23 @@ private:
 
         // 处理材质
         aiMaterial* material = scene->mMaterials[mesh->mMaterialIndex];
-
-        // --- 提取材质基础颜色 ---
-        aiColor4D color(1.0f, 1.0f, 1.0f, 1.0f);
-        // GLTF 规范通常使用 Base Color
-        if (AI_SUCCESS != aiGetMaterialColor(material, AI_MATKEY_BASE_COLOR, &color)) {
-            // 如果没拿到 Base Color，尝试拿 Diffuse Color
-            aiGetMaterialColor(material, AI_MATKEY_COLOR_DIFFUSE, &color);
-        }
-        glm::vec3 meshColor(color.r, color.g, color.b);
-
-        // 我们只关注漫反射贴图 (Diffuse Maps)
+        
+        // 1. 获取漫反射贴图 (针对 OBJ)
         std::vector<Texture> diffuseMaps = loadMaterialTextures(material, aiTextureType_DIFFUSE, "texture_diffuse", scene);
+
+        // 2. 如果是 GLB 或 Diffuse 为空，尝试加载 BaseColor (针对 PBR GLB)
+        if (diffuseMaps.empty()) {
+            diffuseMaps = loadMaterialTextures(material, aiTextureType_BASE_COLOR, "texture_diffuse", scene);
+        }
         textures.insert(textures.end(), diffuseMaps.begin(), diffuseMaps.end());
 
-        std::vector<Texture> normalMaps = loadMaterialTextures(material, aiTextureType_NORMALS, "texture_normal", scene);
-        textures.insert(textures.end(), normalMaps.begin(), normalMaps.end());
+        // 3. 处理颜色 (Vector3)
+        aiColor4D color(1.0f, 1.0f, 1.0f, 1.0f);
+        if (AI_SUCCESS != aiGetMaterialColor(material, AI_MATKEY_BASE_COLOR, &color)) {
+            aiGetMaterialColor(material, AI_MATKEY_COLOR_DIFFUSE, &color);
+        }
 
-        std::vector<Texture> metallicMaps = loadMaterialTextures(material, aiTextureType_METALNESS, "texture_metallic", scene);
-        textures.insert(textures.end(), metallicMaps.begin(), metallicMaps.end());
-
-        return Mesh(vertices, indices, textures, meshColor);
+        return Mesh(vertices, indices, textures, glm::vec3(color.r, color.g, color.b));
     }
     
     std::vector<Texture> loadMaterialTextures(aiMaterial* mat, aiTextureType type, std::string typeName, const aiScene* scene) {
@@ -394,20 +367,6 @@ private:
 
             std::string actualFilename;
 
-            // Step 2: 判断是内部索引还是外部文件
-            //if (textureKey.rfind("*", 0) == 0) { //内部索引
-            //    if (textureMap.find(textureKey) != textureMap.end()) {
-            //        actualFilename = textureMap[textureKey]; // 从用户提供的映射表获取真实文件名
-            //    }
-            //    else {
-            //        std::cerr << "Error: No mapping found for internal texture: " << textureKey << std::endl;
-            //        continue;
-            //    }
-            //}
-            //else {
-            //    // 普通外部文件路径（如 "Cat_diffuse.jpg"）
-            //    actualFilename = textureKey;
-            //}
             if (textureKey.size() > 0 && textureKey[0] == '*') {
                 // 如果是内嵌贴图，直接从 scene 中获取
                 const aiTexture* aiTex = scene->GetEmbeddedTexture(textureKey.c_str());
@@ -419,13 +378,6 @@ private:
                 // 处理外部文件 (OBJ)
                 texture.id = TextureFromFile(textureKey.c_str(), TEXTURES_DIR);
             }
-
-            // Step 3: 加载纹理
-            /*unsigned int textureID = TextureFromFile(actualFilename.c_str(), TEXTURES_DIR);
-            if (textureID == 0) {
-                std::cerr << "Failed to load texture: " << actualFilename << " from dir: " << TEXTURES_DIR << std::endl;
-                continue;
-            }*/
 
             if(texture.id != 0) {
                 textures.push_back(texture);

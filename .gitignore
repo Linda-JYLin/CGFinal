@@ -9,3 +9,5 @@
 *.user
 *.vcxproj.filters
 *.vcxproj.user
+src/assets/car/mcl39/mcl39.obj
+src/assets/car/mcl39/mcl39.zip

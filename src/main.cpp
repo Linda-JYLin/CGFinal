@@ -80,47 +80,12 @@ void scroll_callback(GLFWwindow* window, double xoffset, double yoffset) {
     // 控制 Zoom（FOV）
      /*camera.ProcessMouseScroll(static_cast<float>(yoffset));*/
 
-    if (topView) {
-        //滚轮调整FOV
-        camera.Zoom -= static_cast<float>(yoffset) * 1.0f;
-        if (camera.Zoom < 10.0f) camera.Zoom = 10.0f;
-        if (camera.Zoom > 200.0f) camera.Zoom = 100.0f;
-    }
-    else {
-        //沿视线前后移动
-        camera.Position += camera.Front * static_cast<float>(yoffset) * 2.0f;
-    }
+     camera.Position += camera.Front * static_cast<float>(yoffset) * 2.0f;
 }
 
 void processInput(GLFWwindow* window) {
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
         glfwSetWindowShouldClose(window, true);
-
-    // --- 1. M键：切换俯视模式 ---
-    static bool mPressed = false;
-    if (glfwGetKey(window, GLFW_KEY_M) == GLFW_PRESS) {
-        if (!mPressed) {
-            topView = !topView;
-            if (topView) {
-                originalCameraPos = camera.Position;
-                originalCameraFront = camera.Front;
-                originalCameraUp = camera.Up;
-                originalZoom = camera.Zoom;
-                camera.Position = glm::vec3(0.0f, 30.0f, -5.0f);
-                camera.Front = glm::vec3(0.0f, -1.0f, 0.0f);
-                camera.Up = glm::vec3(0.0f, 0.0f, -1.0f);
-            }
-            else {
-                camera.Position = originalCameraPos;
-                camera.Front = originalCameraFront;
-                camera.Up = originalCameraUp;
-                camera.Zoom = originalZoom;
-            }
-            camera.UpdateVectors();
-            mPressed = true;
-        }
-    }
-    else { mPressed = false; }
 
     // --- 2. 左Alt键：控制鼠标视角锁定 ---
     static bool altPressed = false;
@@ -135,7 +100,7 @@ void processInput(GLFWwindow* window) {
     else { altPressed = false; }
 
     // --- 3. WASDQE 移动控制 (非俯视模式生效) ---
-    if (!topView) {
+   /* if (!topView) {*/
         // WASD 移动
         if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) camera.ProcessKeyboard(FORWARD, deltaTime);
         if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) camera.ProcessKeyboard(BACKWARD, deltaTime);
@@ -146,7 +111,7 @@ void processInput(GLFWwindow* window) {
         float speed = camera.MovementSpeed * deltaTime;
         if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS) eyeHeight += speed;
         if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS) eyeHeight -= speed;
-    }
+    //}
 }
 
 // ———————— 主函数 ————————

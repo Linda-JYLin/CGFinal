@@ -97,6 +97,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_SOURCE_DIR}/include/assimp/include
 )
 include_directories("${CMAKE_SOURCE_DIR}/include")
+include_directories("${CMAKE_SOURCE_DIR}/include/tinygltf")
 # 链接库
 target_link_libraries(${PROJECT_NAME} PRIVATE
     OpenGL::GL
