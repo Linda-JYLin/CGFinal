@@ -1,5 +1,8 @@
 #include "include/shader.hpp"
 #include <map>
+#include "include/car.hpp"
+
+static Car dummyCar(glm::vec3(0.0f));
 
 // ———————— 网格类（Mesh） ————————
 // 顶点类
@@ -209,9 +212,10 @@ public:
     }
 
     // 增加 baseTransform 参数
-    void Draw(Shader& shader, glm::mat4 baseTransform = glm::mat4(1.0f)) {
+    // 给赛车用，需要传入 Car 对象来控制轮子
+    void Draw(Shader& shader, glm::mat4 baseTransform = glm::mat4(1.0f), Car& car = dummyCar) {
         if (scene && scene->mRootNode) {
-            drawNode(scene->mRootNode, shader, baseTransform);
+            drawNode(scene->mRootNode, shader, baseTransform, car);
         }
     }
 
@@ -240,8 +244,21 @@ private:
     }
 
 
-    void drawNode(aiNode* node, Shader& shader, glm::mat4 parentTransform) {
+    void drawNode(aiNode* node, Shader& shader, glm::mat4 parentTransform, Car& car) {
         glm::mat4 nodeTransform = convertMatrixToGLM(node->mTransformation);
+        std::string name = node->mName.C_Str();
+
+        // 检查是否是轮子节点（根据你 Blender 里的 front_tire, rear_tire）
+        if (name.find("front_tire") != std::string::npos) {
+            // 前轮：先绕 Y 转向，再绕 X 滚动
+            nodeTransform = glm::rotate(nodeTransform, glm::radians(car.SteerAngle), glm::vec3(0, 1, 0));
+            nodeTransform = glm::rotate(nodeTransform, glm::radians(car.WheelRotation), glm::vec3(1, 0, 0));
+        }
+        else if (name.find("rear_tire") != std::string::npos) {
+            // 后轮：仅绕 X 滚动
+            nodeTransform = glm::rotate(nodeTransform, glm::radians(car.SteerAngle), glm::vec3(1, 0, 0));
+        }
+
         glm::mat4 globalTransform = parentTransform * nodeTransform;
 
         for (unsigned int i = 0; i < node->mNumMeshes; i++) {
@@ -251,7 +268,7 @@ private:
 
         // 4. 递归处理子节点
         for (unsigned int i = 0; i < node->mNumChildren; i++) {
-            drawNode(node->mChildren[i], shader, globalTransform);
+            drawNode(node->mChildren[i], shader, globalTransform, car);
         }
     }
 

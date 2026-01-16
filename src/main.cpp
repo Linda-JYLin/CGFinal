@@ -23,6 +23,7 @@
 #include "include/model.hpp"
 #include "include/skybox.hpp"
 #include "include/terrain/terrain.hpp"
+#include "include/car.hpp"
 
 // ———————— 全局变量 ————————
 const unsigned int SCR_WIDTH = 800;
@@ -34,6 +35,9 @@ Camera camera(glm::vec3(0.0f, eyeHeight, 5.0f));
 bool firstMouse = true;
 float lastX = SCR_WIDTH / 2.0f;
 float lastY = SCR_HEIGHT / 2.0f;
+
+Car myCar(glm::vec3(2.0f, 0.0f, -5.0f));
+bool driveMode = true;
 
 float deltaTime = 0.0f;
 float lastFrame = 0.0f;
@@ -83,7 +87,7 @@ void scroll_callback(GLFWwindow* window, double xoffset, double yoffset) {
      camera.Position += camera.Front * static_cast<float>(yoffset) * 2.0f;
 }
 
-void processInput(GLFWwindow* window) {
+void processInput(GLFWwindow* window, Car& myCar, Terrain& terrain) {
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
         glfwSetWindowShouldClose(window, true);
 
@@ -99,19 +103,50 @@ void processInput(GLFWwindow* window) {
     }
     else { altPressed = false; }
 
-    // --- 3. WASDQE 移动控制 (非俯视模式生效) ---
-   /* if (!topView) {*/
-        // WASD 移动
+    // --- 3. WASDQE 移动控制 ---
+    // WASD 移动
+    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) camera.ProcessKeyboard(FORWARD, deltaTime);
+    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) camera.ProcessKeyboard(BACKWARD, deltaTime);
+    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) camera.ProcessKeyboard(LEFT, deltaTime);
+    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) camera.ProcessKeyboard(RIGHT, deltaTime);
+
+    // QE 修改相对于地面的高度
+    float speed = camera.MovementSpeed * deltaTime;
+    if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS) eyeHeight += speed;
+    if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS) eyeHeight -= speed;
+
+    // 按 C 键：手动切换【自由探索】和【驾驶模式】
+    static bool cPressed = false;
+    if (glfwGetKey(window, GLFW_KEY_C) == GLFW_PRESS) {
+        if (!cPressed) {
+            driveMode = !driveMode;
+            cPressed = true;
+            // 如果切回驾驶模式，可以重置一些相机状态
+            if (driveMode) firstMouse = true;
+        }
+    }
+    else { cPressed = false; }
+
+    if (driveMode) {
+        // --- 模式 A：驾驶赛车 ---
+        bool w = glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS;
+        bool s = glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS;
+        bool a = glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS;
+        bool d = glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS;
+
+        float groundY = terrain.getHeightWorld(myCar.Position.x, myCar.Position.z);
+        myCar.Update(deltaTime, groundY, w, s, a, d);
+    }
+    else {
+        // --- 模式 B：自由相机 ---
+        // 只有在这里，WASD 才控制相机移动
         if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) camera.ProcessKeyboard(FORWARD, deltaTime);
         if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) camera.ProcessKeyboard(BACKWARD, deltaTime);
         if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) camera.ProcessKeyboard(LEFT, deltaTime);
         if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) camera.ProcessKeyboard(RIGHT, deltaTime);
 
-        // QE 修改相对于地面的高度
-        float speed = camera.MovementSpeed * deltaTime;
-        if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS) eyeHeight += speed;
-        if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS) eyeHeight -= speed;
-    //}
+        // 自由模式下可以继续按 QE 调整 eyeHeight 方便观察
+    }
 }
 
 // ———————— 主函数 ————————
@@ -189,7 +224,38 @@ int main() {
         deltaTime = currentFrame - lastFrame;
         lastFrame = currentFrame;
 
-        processInput(window);
+        processInput(window, myCar, terrain);
+
+        if (driveMode) {
+            // --- 1. 计算相机理想的目标位置 ---
+            float distance = -1.5f;
+            float height = 1.2f;
+
+            // 基于赛车当前的朝向 (myCar.Heading) 计算车后方的点
+            glm::vec3 offset;
+            offset.x = -glm::sin(glm::radians(myCar.Heading)) * distance;
+            offset.z = -glm::cos(glm::radians(myCar.Heading)) * distance;
+            offset.y = height;
+
+            glm::vec3 targetCameraPos = myCar.Position + offset;
+
+            // --- 2. 平滑插值 (关键：让相机“飞”过去) ---
+            // 0.1f 是平滑系数，数值越小越丝滑，越大越紧跟
+            float smoothSpeed = 20.0f;
+            camera.Position = glm::mix(camera.Position, targetCameraPos, smoothSpeed * deltaTime);
+
+            // --- 3. 处理相机旋转 (平滑转向) ---
+            // 让相机始终平滑地看向赛车中心点（或稍微靠前一点）
+            float targetYaw = myCar.Heading + 90.0f;
+            float targetPitch = -5.0f;
+
+            // 对角度也进行平滑插值，防止赛车急速转弯时相机闪烁
+			camera.Yaw = targetYaw; //glm::mix(camera.Yaw, targetYaw, smoothSpeed * deltaTime);
+            camera.Pitch = targetPitch; //glm::mix(camera.Pitch, targetPitch, smoothSpeed * deltaTime);
+
+            // 记得调用你 Camera 类的更新向量函数（注意大小写，通常是 updateCameraVectors）
+            camera.UpdateVectors();
+        }
 
         if (!topView) {
             // 获取当前位置的地形高度
@@ -198,15 +264,6 @@ int main() {
             // 关键：相机的 Y = 当前地形高度 + 我们的手动偏移量
             camera.Position.y = groundY + eyeHeight;
         }
-
-        // 设置相机贴地
-        //float groundY = terrain.getHeightWorld(
-        //    camera.Position.x,
-        //    camera.Position.z
-        //);
-
-        //camera.Position.y = groundY + 10.0f;     // 模拟人眼高度(暂时调高便于观察）
-
 
         glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -223,9 +280,6 @@ int main() {
         ourShader.setVec3("viewPos", camera.Position);
         ourShader.setVec3("light.position", glm::vec3(0.0f, 1.0f, 10.0f));
         ourShader.setVec3("light.color", glm::vec3(1.0f, 1.0f, 1.0f));
-
-
-
 
         // ------------画猫的模型---------------------
         glm::vec3 catPos(-2.0f, 0.0f, -5.0f);   // 设置猫位置
@@ -244,18 +298,41 @@ int main() {
         cat1.Draw(ourShader, modelCat);
 
         // ------------画赛车的模型---------------------
-        glm::vec3 carPos = glm::vec3(2.0f, 0.0f, -5.0f);    // 设置赛车位置
+        //glm::vec3 carPos = glm::vec3(2.0f, 0.0f, -5.0f);    // 设置赛车位置
 
-        carPos.y = terrain.getHeightWorld(carPos.x, carPos.z) + 5.0f;   //设置赛车高度：获取当前位置的地形高度+车轮半径
+        //carPos.y = terrain.getHeightWorld(carPos.x, carPos.z) + 5.0f;   //设置赛车高度：获取当前位置的地形高度+车轮半径
 
-        // 设置模型矩阵
-        glm::mat4 modelCar = glm::mat4(1.0f);
-        // 平移因子
-        modelCar = glm::translate(modelCar, carPos); // 放在右边，略低一点
-        modelCar = glm::scale(modelCar, glm::vec3(1.0f, 1.0f, 1.0f));   // 赛车更小的缩放
-        // 缩放因子
+        //// 设置模型矩阵
+        //glm::mat4 modelCar = glm::mat4(1.0f);
+        //// 平移因子
+        //modelCar = glm::translate(modelCar, carPos); // 放在右边，略低一点
+        //modelCar = glm::scale(modelCar, glm::vec3(1.0f, 1.0f, 1.0f));   // 赛车更小的缩放
+        //// 缩放因子
+        //ourShader.setMat4("model", modelCar);
+        //mclaren.Draw(ourShader, modelCar);
+        
+        ourShader.use();
+
+        // 获取地形法线
+        glm::vec3 normal = terrain.getNormalWorld(myCar.Position.x, myCar.Position.z);
+        // 赛车水平朝向向量
+        glm::vec3 forward = glm::vec3(sin(glm::radians(myCar.Heading)), 0, cos(glm::radians(myCar.Heading)));
+        // 计算贴地的坐标系
+        glm::vec3 right = glm::normalize(glm::cross(forward, normal));
+        glm::vec3 actualForward = glm::normalize(glm::cross(normal, right));
+
+        // 构建旋转矩阵
+        glm::mat4 rotation = glm::mat4(1.0f);
+        rotation[0] = glm::vec4(right, 0.0f);
+        rotation[1] = glm::vec4(normal, 0.0f);
+        rotation[2] = glm::vec4(actualForward, 0.0f);
+
+        glm::mat4 modelCar = glm::translate(glm::mat4(1.0f), myCar.Position);
+        modelCar = modelCar * rotation; // 应用地形倾斜旋转
+        modelCar = glm::scale(modelCar, glm::vec3(1.0f));
+
         ourShader.setMat4("model", modelCar);
-        mclaren.Draw(ourShader, modelCar);
+        mclaren.Draw(ourShader, modelCar, myCar);
 
         // -------------画地形---------------------------
         terrain.render(view, projection, camera.Position);
