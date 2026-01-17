@@ -227,37 +227,42 @@ int main() {
         processInput(window, myCar, terrain);
 
         if (driveMode) {
-            // --- 1. 计算相机理想的目标位置 ---
-            float distance = -1.5f;
-            float height = 1.2f;
+            // --- 1. 计算理想位置 ---
+            float distance = 4.5f; // 稍微拉远一点视角更开阔
+            float height = 2.5f;
 
-            // 基于赛车当前的朝向 (myCar.Heading) 计算车后方的点
+            // 计算车后方的理想位置
             glm::vec3 offset;
             offset.x = -glm::sin(glm::radians(myCar.Heading)) * distance;
             offset.z = -glm::cos(glm::radians(myCar.Heading)) * distance;
             offset.y = height;
 
+            // 在 offset 计算下方增加一个 lookTarget
+            glm::vec3 lookTarget = myCar.Position + glm::vec3(0.0f, 1.2f, 0.0f); // 向上偏移0.8个单位
+            glm::vec3 lookDirection = glm::normalize(lookTarget - camera.Position);
+
             glm::vec3 targetCameraPos = myCar.Position + offset;
 
-            // --- 2. 平滑插值 (关键：让相机“飞”过去) ---
-            // 0.1f 是平滑系数，数值越小越丝滑，越大越紧跟
-            float smoothSpeed = 20.0f;
-            camera.Position = glm::mix(camera.Position, targetCameraPos, smoothSpeed * deltaTime);
+            // --- 2. 增强位置插值 ---
+            // 使用更动态的平滑系数，或者直接增加数值
+            float followSpeed = 15.0f;
+            camera.Position = glm::mix(camera.Position, targetCameraPos, glm::clamp(followSpeed * deltaTime, 0.0f, 1.0f));
 
-            // --- 3. 处理相机旋转 (平滑转向) ---
-            // 让相机始终平滑地看向赛车中心点（或稍微靠前一点）
-            float targetYaw = myCar.Heading + 90.0f;
-            float targetPitch = -5.0f;
+            // --- 3. 核心改进：直接 LookAt 赛车 ---
+            // 不要去手动加减 Yaw，直接计算从相机到车的向量
+            //glm::vec3 lookDirection = glm::normalize(myCar.Position - camera.Position);
 
-            // 对角度也进行平滑插值，防止赛车急速转弯时相机闪烁
-			camera.Yaw = targetYaw; //glm::mix(camera.Yaw, targetYaw, smoothSpeed * deltaTime);
-            camera.Pitch = targetPitch; //glm::mix(camera.Pitch, targetPitch, smoothSpeed * deltaTime);
+            // 重新计算相机的 Front/Right/Up 向量
+            camera.Front = lookDirection;
+            camera.Right = glm::normalize(glm::cross(camera.Front, glm::vec3(0.0f, 1.0f, 0.0f)));
+            camera.Up = glm::normalize(glm::cross(camera.Right, camera.Front));
 
-            // 记得调用你 Camera 类的更新向量函数（注意大小写，通常是 updateCameraVectors）
-            camera.UpdateVectors();
+            // 如果你的 Camera 类是基于 Yaw/Pitch 的，可以通过以下方式反推（防止跳动）
+            camera.Yaw = glm::degrees(atan2(camera.Front.z, camera.Front.x));
+            camera.Pitch = glm::degrees(asin(camera.Front.y));
+            //camera.UpdateVectors();
         }
-
-        if (!topView) {
+        else if (!topView) {
             // 获取当前位置的地形高度
             float groundY = terrain.getHeightWorld(camera.Position.x, camera.Position.z);
 
@@ -298,19 +303,6 @@ int main() {
         cat1.Draw(ourShader, modelCat);
 
         // ------------画赛车的模型---------------------
-        //glm::vec3 carPos = glm::vec3(2.0f, 0.0f, -5.0f);    // 设置赛车位置
-
-        //carPos.y = terrain.getHeightWorld(carPos.x, carPos.z) + 5.0f;   //设置赛车高度：获取当前位置的地形高度+车轮半径
-
-        //// 设置模型矩阵
-        //glm::mat4 modelCar = glm::mat4(1.0f);
-        //// 平移因子
-        //modelCar = glm::translate(modelCar, carPos); // 放在右边，略低一点
-        //modelCar = glm::scale(modelCar, glm::vec3(1.0f, 1.0f, 1.0f));   // 赛车更小的缩放
-        //// 缩放因子
-        //ourShader.setMat4("model", modelCar);
-        //mclaren.Draw(ourShader, modelCar);
-        
         ourShader.use();
 
         // 获取地形法线
@@ -327,7 +319,11 @@ int main() {
         rotation[1] = glm::vec4(normal, 0.0f);
         rotation[2] = glm::vec4(actualForward, 0.0f);
 
-        glm::mat4 modelCar = glm::translate(glm::mat4(1.0f), myCar.Position);
+        float carHeightOffset = 0.50f;  //因为origin是在body正中间，所以需要添加偏移量增加底盘相对地形告诉
+        glm::vec3 adjustedPose = myCar.Position;
+        adjustedPose += carHeightOffset;
+
+        glm::mat4 modelCar = glm::translate(glm::mat4(1.0f), adjustedPose);
         modelCar = modelCar * rotation; // 应用地形倾斜旋转
         modelCar = glm::scale(modelCar, glm::vec3(1.0f));
 

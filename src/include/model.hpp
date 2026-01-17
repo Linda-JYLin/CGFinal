@@ -248,15 +248,27 @@ private:
         glm::mat4 nodeTransform = convertMatrixToGLM(node->mTransformation);
         std::string name = node->mName.C_Str();
 
-        // 检查是否是轮子节点（根据你 Blender 里的 front_tire, rear_tire）
-        if (name.find("front_tire") != std::string::npos) {
-            // 前轮：先绕 Y 转向，再绕 X 滚动
-            nodeTransform = glm::rotate(nodeTransform, glm::radians(car.SteerAngle), glm::vec3(0, 1, 0));
-            nodeTransform = glm::rotate(nodeTransform, glm::radians(car.WheelRotation), glm::vec3(1, 0, 0));
-        }
-        else if (name.find("rear_tire") != std::string::npos) {
-            // 后轮：仅绕 X 滚动
-            nodeTransform = glm::rotate(nodeTransform, glm::radians(car.SteerAngle), glm::vec3(1, 0, 0));
+        // 提取原有的位移和缩放（Assimp 导入时的初始位置）
+        glm::mat4 originNodeTransform = convertMatrixToGLM(node->mTransformation);
+
+        if (name.find("front_tire") != std::string::npos || name.find("rear_tire") != std::string::npos) {
+            // 1. 获取原始变换矩阵
+            glm::mat4 originNodeTransform = convertMatrixToGLM(node->mTransformation);
+
+            // 2. 构造局部旋转
+            glm::mat4 localRot = glm::mat4(1.0f);
+
+            // 前轮增加转向
+            if (name.find("front_tire") != std::string::npos) {
+                localRot = glm::rotate(localRot, glm::radians(-car.SteerAngle), glm::vec3(0, 1, 0));
+            }
+            // 所有轮子增加滚动
+            //localRot = glm::rotate(localRot, glm::radians(car.WheelRotation), glm::vec3(1, 0, 0));
+
+            // 3. 【关键修改】：将旋转作用在原始变换的“前面”
+            // 在 GLM (列主序) 中，"origin * localRot" 意味着先执行 localRot，再执行 origin 的位移
+            // 这会自动以轮子模型在 Blender 里的原点为中心旋转
+            nodeTransform = originNodeTransform * localRot;
         }
 
         glm::mat4 globalTransform = parentTransform * nodeTransform;
