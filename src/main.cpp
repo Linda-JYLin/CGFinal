@@ -23,7 +23,7 @@
 #include "include/model.hpp"
 #include "include/skybox.hpp"
 #include "include/terrain/terrain.hpp"
-#include "include/car.hpp"
+#include "include/ani.hpp"
 
 // ———————— 全局变量 ————————
 const unsigned int SCR_WIDTH = 800;
@@ -186,13 +186,15 @@ int main() {
 
     // 创建着色器（需准备 .vs 和 .fs 文件）
     Shader ourShader((std::string(SHADERS_FOLDER) + "model.vs").c_str(), (std::string(SHADERS_FOLDER) + "model.fs").c_str());
-    
+    Shader animShader((std::string(SHADERS_FOLDER) + "ani.vs").c_str(), (std::string(SHADERS_FOLDER) + "model.fs").c_str());
+
     std::map<std::string, std::string> carTextureMap;
     // 猫模型是obj和mtl所以textureMap可以为空
     std::map<std::string, std::string> cattextureMap;
 
-    Model cat1((std::string(ASSETS_FOLDER)+"cat/Cat1/12221_Cat_v1_l3.obj").c_str(), (std::string(ASSETS_FOLDER) + "cat/Cat1/").c_str());
-    Model mclaren((std::string(ASSETS_FOLDER)+"car/f1_2025_mclaren_mcl39.glb").c_str(), (std::string(ASSETS_FOLDER) + "car/").c_str());
+    AniModel cat1((std::string(ASSETS_FOLDER) + "munchkin_cat2/scene.gltf").c_str(), (std::string(ASSETS_FOLDER) + "munchkin_cat2/").c_str());
+    Model mclaren((std::string(ASSETS_FOLDER) + "car/f1_2025_mclaren_mcl39.glb").c_str(), (std::string(ASSETS_FOLDER) + "car/").c_str());
+    //Model cat1((std::string(ASSETS_FOLDER)+"cat/Cat1/12221_Cat_v1_l3.obj").c_str(), (std::string(ASSETS_FOLDER) + "cat/Cat1/").c_str());
 
     // 初始化、加载天空盒
     std::vector<std::string> faces = {
@@ -286,21 +288,24 @@ int main() {
         ourShader.setVec3("light.position", glm::vec3(0.0f, 1.0f, 10.0f));
         ourShader.setVec3("light.color", glm::vec3(1.0f, 1.0f, 1.0f));
 
+        animShader.use();
+        animShader.setMat4("projection", projection);
+        animShader.setMat4("view", view);
+        animShader.setVec3("viewPos", camera.Position);
+        animShader.setVec3("light.position", glm::vec3(0.0f, 1.0f, 10.0f));
+        animShader.setVec3("light.color", glm::vec3(1.0f, 1.0f, 1.0f));
+
         // ------------画猫的模型---------------------
-        glm::vec3 catPos(-2.0f, 0.0f, -5.0f);   // 设置猫位置
+        glm::vec3 catPos(-2.0f, 0.0f, -5.0f);
+        catPos.y = terrain.getHeightWorld(catPos.x, catPos.z); // 获取实时高度
 
-        catPos.y = terrain.getHeightWorld(catPos.x, catPos.z) + 0.5f;     // 设置猫的高度：获取当前位置的地形高度+猫的原点距离脚底的距离
-
-        // 设置模型矩阵
         glm::mat4 modelCat = glm::mat4(1.0f);
-        // 先旋转后平移（OpenGL中，最后写的变换，最先作用在顶点上）
-        modelCat = glm::translate(modelCat, catPos); // 放在左边
-        // 旋转因子
-        modelCat = glm::rotate(modelCat, glm::radians(90.0f), glm::vec3(-1.0f, 0.0f, 0.0f));
-        // 缩放因子
-        modelCat = glm::scale(modelCat, glm::vec3(0.2f, 0.2f, 0.2f));
-        ourShader.setMat4("model", modelCat);
-        cat1.Draw(ourShader, modelCat);
+        modelCat = glm::translate(modelCat, catPos);          // 1. 移到目的地
+        modelCat = glm::scale(modelCat, glm::vec3(10.0f));     // 2. 缩放
+
+        // 传入我们计算好的 modelCat 作为所有动画节点的起始矩阵
+        float currentTime = static_cast<float>(glfwGetTime());
+        cat1.UpdateAndDraw(animShader, currentTime, modelCat);
 
         // ------------画赛车的模型---------------------
         ourShader.use();
