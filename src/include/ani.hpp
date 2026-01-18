@@ -112,6 +112,7 @@ public:
     Assimp::Importer importer;
     const aiScene* scene = nullptr;
     std::string TEXTURES_DIR;
+    int externalState = 0; // 状态机0 idle, 1 walk, 2 run
 
     AniModel(const std::string& path, const std::string& texture_path) : TEXTURES_DIR(texture_path) {
         loadModel(path);
@@ -185,9 +186,31 @@ public:
         //testWeights[10] = breath * 0.3f; // 呼吸幅度不宜过大
         //testWeights[11] = breath * 0.1f;
 
-        // 高斯
-        // 生成高斯波权重
-        testWeights = generateGaussianWaveWeights(time * 1000.0f, 311, 13000.0f, 1.0f);
+        // 高斯波权重
+        // 完整动作
+        //testWeights = generateGaussianWaveWeights(time * 1000.0f, 311, 13000.0f, 1.0f);
+        // 好奇版摇头
+        //std::vector<float> newWeights = generateGaussianWaveWeights(time * 1000.0f, 200, 8360.0f, 1.0f);
+        //std::copy(newWeights.begin(), newWeights.begin() + 200, testWeights.begin());
+        // 跑步
+        //std::vector<float> newWeights = generateGaussianWaveWeights(time * 1000.0f, 32, 1338.0f, 1.0f);
+        //std::copy(newWeights.begin(), newWeights.begin() + 32, testWeights.begin()+210);
+        // 走路
+        //std::vector<float> newWeights = generateGaussianWaveWeights(time * 1000.0f, 50, 2075.0f, 1.0f);
+        //std::copy(newWeights.begin(), newWeights.begin() + 50, testWeights.begin() + 260);
+        
+        if (externalState == 2) {          // RUN
+            auto w = generateGaussianWaveWeights(time * 1000.0f, 32, 1338.0f, 1.0f);
+            std::copy(w.begin(), w.end(), testWeights.begin() + 210);
+        }
+        else if (externalState == 1) {     // WALK
+            auto w = generateGaussianWaveWeights(time * 1000.0f, 50, 2075.0f, 1.0f);
+            std::copy(w.begin(), w.end(), testWeights.begin() + 260);
+        }
+        else {                             // IDLE (摇头)
+            auto w = generateGaussianWaveWeights(time * 1000.0f, 20, 4000.0f, 1.0f);
+            std::copy(w.begin(), w.end(), testWeights.begin());
+        }
 
         for (auto& m : meshes) {
             if (!m.morphTargets.empty()) {

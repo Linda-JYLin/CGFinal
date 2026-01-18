@@ -193,6 +193,7 @@ int main() {
     std::map<std::string, std::string> cattextureMap;
 
     AniModel cat1((std::string(ASSETS_FOLDER) + "munchkin_cat2/scene.gltf").c_str(), (std::string(ASSETS_FOLDER) + "munchkin_cat2/").c_str());
+    glm::vec3 catPos(-2.0f, 0.0f, -5.0f);//猫的初始位置
     Model mclaren((std::string(ASSETS_FOLDER) + "car/f1_2025_mclaren_mcl39.glb").c_str(), (std::string(ASSETS_FOLDER) + "car/").c_str());
     //Model cat1((std::string(ASSETS_FOLDER)+"cat/Cat1/12221_Cat_v1_l3.obj").c_str(), (std::string(ASSETS_FOLDER) + "cat/Cat1/").c_str());
 
@@ -296,15 +297,39 @@ int main() {
         animShader.setVec3("light.color", glm::vec3(1.0f, 1.0f, 1.0f));
 
         // ------------画猫的模型---------------------
-        glm::vec3 catPos(-2.0f, 0.0f, -5.0f);
         catPos.y = terrain.getHeightWorld(catPos.x, catPos.z); // 获取实时高度
+        float catMoveSpeed = 0.0f;
+
+        enum CatState { IDLE, WALK, RUN }; //动作状态机
+        CatState catState = IDLE;
+        // 计算猫和车的距离（忽略高度，只看XZ平面）
+        glm::vec2 carXZ(myCar.Position.x, myCar.Position.z);
+        glm::vec2 catXZ(catPos.x, catPos.z);
+        float dist = glm::distance(carXZ, catXZ);
+        // 状态机
+        if (dist < 50.0f) {
+            catState = RUN;
+            catMoveSpeed = 6.0f;
+        }
+        else if (dist < 100.0f) {
+            catState = WALK;
+            catMoveSpeed = 2.5f;
+        }
+        else {
+            catState = IDLE;
+            catMoveSpeed = 0.0f;
+        }
 
         glm::mat4 modelCat = glm::mat4(1.0f);
+        catPos.z += catMoveSpeed * deltaTime;
+        catPos.y = terrain.getHeightWorld(catPos.x, catPos.z);// 更新贴地高度
+
         modelCat = glm::translate(modelCat, catPos);          // 1. 移到目的地
         modelCat = glm::scale(modelCat, glm::vec3(10.0f));     // 2. 缩放
 
         // 传入我们计算好的 modelCat 作为所有动画节点的起始矩阵
         float currentTime = static_cast<float>(glfwGetTime());
+        cat1.externalState = (int)catState;
         cat1.UpdateAndDraw(animShader, currentTime, modelCat);
 
         // ------------画赛车的模型---------------------
