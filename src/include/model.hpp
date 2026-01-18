@@ -211,11 +211,16 @@ public:
         loadModel(path);
     }
 
+    void Draw(Shader& shader, glm::mat4 baseTransform = glm::mat4(1.0f)) {
+        if (scene && scene->mRootNode) {
+            drawNode(scene->mRootNode, shader, baseTransform);
+        }
+    }
     // 增加 baseTransform 参数
     // 给赛车用，需要传入 Car 对象来控制轮子
-    void Draw(Shader& shader, glm::mat4 baseTransform = glm::mat4(1.0f), Car& car = dummyCar) {
+    void DrawCar(Shader& shader, glm::mat4 baseTransform = glm::mat4(1.0f), Car& car = dummyCar) {
         if (scene && scene->mRootNode) {
-            drawNode(scene->mRootNode, shader, baseTransform, car);
+            drawNodeCar(scene->mRootNode, shader, baseTransform, car);
         }
     }
 
@@ -226,9 +231,6 @@ private:
 
         unsigned int flags = aiProcess_Triangulate | aiProcess_GenSmoothNormals | aiProcess_CalcTangentSpace | aiProcess_FlipUVs;
 
-
-        // 步骤 1：验证问题时，可以添加 aiProcess_PreTransformVertices
-        // 但为了后续能让赛车“动起来”，我们不使用它，而是通过代码处理变换
         scene = importer.ReadFile(path, flags);
 
         if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
@@ -243,8 +245,27 @@ private:
         
     }
 
+    void drawNode(aiNode* node, Shader& shader, glm::mat4 parentTransform) {
+        glm::mat4 nodeTransform = convertMatrixToGLM(node->mTransformation);
+        std::string name = node->mName.C_Str();
 
-    void drawNode(aiNode* node, Shader& shader, glm::mat4 parentTransform, Car& car) {
+        // 提取原有的位移和缩放（Assimp 导入时的初始位置）
+        glm::mat4 originNodeTransform = convertMatrixToGLM(node->mTransformation);
+
+        glm::mat4 globalTransform = parentTransform * nodeTransform;
+
+        for (unsigned int i = 0; i < node->mNumMeshes; i++) {
+            shader.setMat4("model", globalTransform); // 这里现在会包含 main 传进来的 baseTransform
+            meshes[node->mMeshes[i]].Draw(shader);
+        }
+
+        // 4. 递归处理子节点
+        for (unsigned int i = 0; i < node->mNumChildren; i++) {
+            drawNode(node->mChildren[i], shader, globalTransform);
+        }
+    }
+
+    void drawNodeCar(aiNode* node, Shader& shader, glm::mat4 parentTransform, Car& car) {
         glm::mat4 nodeTransform = convertMatrixToGLM(node->mTransformation);
         std::string name = node->mName.C_Str();
 
@@ -280,7 +301,7 @@ private:
 
         // 4. 递归处理子节点
         for (unsigned int i = 0; i < node->mNumChildren; i++) {
-            drawNode(node->mChildren[i], shader, globalTransform, car);
+            drawNodeCar(node->mChildren[i], shader, globalTransform, car);
         }
     }
 

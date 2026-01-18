@@ -195,7 +195,7 @@ int main() {
     AniModel cat1((std::string(ASSETS_FOLDER) + "munchkin_cat2/scene.gltf").c_str(), (std::string(ASSETS_FOLDER) + "munchkin_cat2/").c_str());
     glm::vec3 catPos(-2.0f, 0.0f, -5.0f);//猫的初始位置
     Model mclaren((std::string(ASSETS_FOLDER) + "car/f1_2025_mclaren_mcl39.glb").c_str(), (std::string(ASSETS_FOLDER) + "car/").c_str());
-    //Model cat1((std::string(ASSETS_FOLDER)+"cat/Cat1/12221_Cat_v1_l3.obj").c_str(), (std::string(ASSETS_FOLDER) + "cat/Cat1/").c_str());
+    Model cat((std::string(ASSETS_FOLDER)+"cat/Cat1/12221_Cat_v1_l3.obj").c_str(), (std::string(ASSETS_FOLDER) + "cat/Cat1/").c_str());
 
     // 初始化、加载天空盒
     std::vector<std::string> faces = {
@@ -358,7 +358,7 @@ int main() {
         modelCar = glm::scale(modelCar, glm::vec3(1.0f));
 
         ourShader.setMat4("model", modelCar);
-        mclaren.Draw(ourShader, modelCar, myCar);
+        mclaren.DrawCar(ourShader, modelCar, myCar);
 
         // -------------画地形---------------------------
         terrain.render(view, projection, camera.Position);
