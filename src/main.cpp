@@ -24,6 +24,7 @@
 #include "include/skybox.hpp"
 #include "include/terrain/terrain.hpp"
 #include "include/ani.hpp"
+#include "include/collision.hpp"
 
 // ———————— 全局变量 ————————
 const unsigned int SCR_WIDTH = 800;
@@ -227,43 +228,78 @@ int main() {
         deltaTime = currentFrame - lastFrame;
         lastFrame = currentFrame;
 
+        // --- 1. 清空上一帧的所有碰撞盒 ---
+        CollisionSystem::clearObstacles();
+
+        // --- 2. 处理猫的逻辑 (移动猫并生成碰撞盒) ---
+        // 逻辑：先计算猫的位置，再把位置告诉碰撞系统
+        catPos.y = terrain.getHeightWorld(catPos.x, catPos.z);
+
+        // 状态机与距离计算
+        glm::vec2 carXZ(myCar.Position.x, myCar.Position.z);
+        glm::vec2 catXZ(catPos.x, catPos.z);
+        float dist = glm::distance(carXZ, catXZ);
+        float catMoveSpeed = 0.0f;
+        enum CatState { IDLE, WALK, RUN }; //动作状态机
+        CatState catState = IDLE;
+
+        if (dist < 50.0f) { catState = RUN; catMoveSpeed = 6.0f; }
+        else if (dist < 100.0f) { catState = WALK; catMoveSpeed = 2.5f; }
+
+        // 更新猫的位置
+        catPos.z += catMoveSpeed * deltaTime;
+        catPos.y = terrain.getHeightWorld(catPos.x, catPos.z);
+
+        // 【关键步骤】将移动后的猫注册到碰撞系统
+        // 注意：猫缩放了10倍，所以碰撞盒大小大约设为 2.0f 到 3.0f 左右
+        BoundingBox catAABB;
+        float catHitBoxSize = 2.5f;
+        catAABB.min = catPos - glm::vec3(catHitBoxSize, 0.0f, catHitBoxSize);
+        catAABB.max = catPos + glm::vec3(catHitBoxSize, catHitBoxSize * 1.5f, catHitBoxSize);
+        CollisionSystem::getObstacles().push_back(catAABB);
+
+        // --- 3. 处理赛车的物理位移 (现在它能看到猫了) ---
         processInput(window, myCar, terrain);
+        CollisionSystem::updatePositionWithPhysics(
+            myCar.Position,
+            myCar.Heading,
+            myCar.Speed, // 注意：CollisionSystem 里的 speed 应该是引用 float& speed
+            deltaTime,
+            terrain
+        );
 
         if (driveMode) {
-            // --- 1. 计算理想位置 ---
-            float distance = 4.5f; // 稍微拉远一点视角更开阔
+            // --- 1. 计算理想偏移位置 ---
+            float distance = 4.5f;
             float height = 2.5f;
 
-            // 计算车后方的理想位置
             glm::vec3 offset;
             offset.x = -glm::sin(glm::radians(myCar.Heading)) * distance;
             offset.z = -glm::cos(glm::radians(myCar.Heading)) * distance;
             offset.y = height;
 
-            // 在 offset 计算下方增加一个 lookTarget
-            glm::vec3 lookTarget = myCar.Position + glm::vec3(0.0f, 1.2f, 0.0f); // 向上偏移0.8个单位
-            glm::vec3 lookDirection = glm::normalize(lookTarget - camera.Position);
-
+            // 理想的目标位置（车后上方）
             glm::vec3 targetCameraPos = myCar.Position + offset;
+            glm::vec3 lookTarget = myCar.Position + glm::vec3(0.0f, 1.2f, 0.0f);
 
-            // --- 2. 增强位置插值 ---
-            // 使用更动态的平滑系数，或者直接增加数值
+            // --- 2. 定义并计算 nextCamPos (插值后的临时位置) ---
             float followSpeed = 15.0f;
-            camera.Position = glm::mix(camera.Position, targetCameraPos, glm::clamp(followSpeed * deltaTime, 0.0f, 1.0f));
+            // 这里定义 nextCamPos
+            glm::vec3 nextCamPos = glm::mix(camera.Position, targetCameraPos, glm::clamp(followSpeed * deltaTime, 0.0f, 1.0f));
 
-            // --- 3. 核心改进：直接 LookAt 赛车 ---
-            // 不要去手动加减 Yaw，直接计算从相机到车的向量
-            //glm::vec3 lookDirection = glm::normalize(myCar.Position - camera.Position);
+            // --- 3. 核心：修正 nextCamPos 防止入地 ---
+            // 只有经过碰撞系统检查后的位置，才能赋给 camera.Position
+            camera.Position = CollisionSystem::resolveCameraCollision(nextCamPos, terrain);
 
-            // 重新计算相机的 Front/Right/Up 向量
+            // --- 4. 重新计算朝向 (保持不变) ---
+            glm::vec3 lookDirection = glm::normalize(lookTarget - camera.Position);
             camera.Front = lookDirection;
             camera.Right = glm::normalize(glm::cross(camera.Front, glm::vec3(0.0f, 1.0f, 0.0f)));
             camera.Up = glm::normalize(glm::cross(camera.Right, camera.Front));
 
-            // 如果你的 Camera 类是基于 Yaw/Pitch 的，可以通过以下方式反推（防止跳动）
+            // 反推角度数据同步
             camera.Yaw = glm::degrees(atan2(camera.Front.z, camera.Front.x));
             camera.Pitch = glm::degrees(asin(camera.Front.y));
-            //camera.UpdateVectors();
         }
         else if (!topView) {
             // 获取当前位置的地形高度
@@ -297,40 +333,47 @@ int main() {
         animShader.setVec3("light.color", glm::vec3(1.0f, 1.0f, 1.0f));
 
         // ------------画猫的模型---------------------
-        catPos.y = terrain.getHeightWorld(catPos.x, catPos.z); // 获取实时高度
-        float catMoveSpeed = 0.0f;
+        //catPos.y = terrain.getHeightWorld(catPos.x, catPos.z); // 获取实时高度
+        //float catMoveSpeed = 0.0f;
 
-        enum CatState { IDLE, WALK, RUN }; //动作状态机
-        CatState catState = IDLE;
-        // 计算猫和车的距离（忽略高度，只看XZ平面）
-        glm::vec2 carXZ(myCar.Position.x, myCar.Position.z);
-        glm::vec2 catXZ(catPos.x, catPos.z);
-        float dist = glm::distance(carXZ, catXZ);
-        // 状态机
-        if (dist < 50.0f) {
-            catState = RUN;
-            catMoveSpeed = 6.0f;
-        }
-        else if (dist < 100.0f) {
-            catState = WALK;
-            catMoveSpeed = 2.5f;
-        }
-        else {
-            catState = IDLE;
-            catMoveSpeed = 0.0f;
-        }
+        //enum CatState { IDLE, WALK, RUN }; //动作状态机
+        //CatState catState = IDLE;
+        //// 计算猫和车的距离（忽略高度，只看XZ平面）
+        //glm::vec2 carXZ(myCar.Position.x, myCar.Position.z);
+        //glm::vec2 catXZ(catPos.x, catPos.z);
+        //float dist = glm::distance(carXZ, catXZ);
+        //// 状态机
+        //if (dist < 50.0f) {
+        //    catState = RUN;
+        //    catMoveSpeed = 6.0f;
+        //}
+        //else if (dist < 100.0f) {
+        //    catState = WALK;
+        //    catMoveSpeed = 2.5f;
+        //}
+        //else {
+        //    catState = IDLE;
+        //    catMoveSpeed = 0.0f;
+        //}
 
-        glm::mat4 modelCat = glm::mat4(1.0f);
-        catPos.z += catMoveSpeed * deltaTime;
-        catPos.y = terrain.getHeightWorld(catPos.x, catPos.z);// 更新贴地高度
+        //glm::mat4 modelCat = glm::mat4(1.0f);
+        //catPos.z += catMoveSpeed * deltaTime;
+        //catPos.y = terrain.getHeightWorld(catPos.x, catPos.z);// 更新贴地高度
 
-        modelCat = glm::translate(modelCat, catPos);          // 1. 移到目的地
-        modelCat = glm::scale(modelCat, glm::vec3(10.0f));     // 2. 缩放
+        //modelCat = glm::translate(modelCat, catPos);          // 1. 移到目的地
+        //modelCat = glm::scale(modelCat, glm::vec3(10.0f));     // 2. 缩放
 
-        // 传入我们计算好的 modelCat 作为所有动画节点的起始矩阵
-        float currentTime = static_cast<float>(glfwGetTime());
+        //// 传入我们计算好的 modelCat 作为所有动画节点的起始矩阵
+        //float currentTime = static_cast<float>(glfwGetTime());
+        //cat1.externalState = (int)catState;
+        //cat1.UpdateAndDraw(animShader, currentTime, modelCat);
+
+        // 画猫
+        glm::mat4 modelCat = glm::translate(glm::mat4(1.0f), catPos);
+        modelCat = glm::scale(modelCat, glm::vec3(10.0f));
+        animShader.use();
         cat1.externalState = (int)catState;
-        cat1.UpdateAndDraw(animShader, currentTime, modelCat);
+        cat1.UpdateAndDraw(animShader, currentFrame, modelCat);
 
         // ------------画赛车的模型---------------------
         ourShader.use();
