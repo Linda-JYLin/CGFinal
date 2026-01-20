@@ -261,7 +261,7 @@ int main() {
         enum CatState { IDLE, WALK, RUN }; //动作状态机
         CatState catState = IDLE;
 
-        if (dist < 50.0f) { catState = RUN; catMoveSpeed = 6.0f; }
+        if (dist < 50.0f) { catState = RUN; catMoveSpeed = 10.0f; }
         else if (dist < 100.0f) { catState = WALK; catMoveSpeed = 2.5f; }
 
         // 更新猫的位置
@@ -293,7 +293,7 @@ int main() {
             // 理想目标点
             glm::vec3 targetCameraPos = myCar.Position + offset;
             // 观察目标点（车身中心略往上）
-            glm::vec3 lookTarget = myCar.Position + glm::vec3(0.0f, 1.2f, 0.0f);
+            glm::vec3 lookTarget = myCar.Position + glm::vec3(0.0f, 3.0f, 0.0f);
 
             // --- 2. 核心改进：先插值，再修正，最后赋值 ---
             float followSpeed = 5.0f;
@@ -349,13 +349,14 @@ int main() {
 
         // 画猫
         glm::mat4 modelCat = glm::translate(glm::mat4(1.0f), catPos);
-        modelCat = glm::scale(modelCat, glm::vec3(10.0f));
+        modelCat = glm::scale(modelCat, glm::vec3(30.0f));
         animShader.use();
         cat1.externalState = (int)catState;
         cat1.UpdateAndDraw(animShader, currentFrame, modelCat);
 
         catPos2.y = terrain.getHeightWorld(catPos2.x, catPos2.z);
         glm::mat4 modelCat2 = glm::translate(glm::mat4(1.0f), catPos2);
+        modelCat2 = glm::rotate(modelCat2, glm::radians(180.0f), glm::vec3(0.0f, 1.0f, 0.0f));
         modelCat2 = glm::scale(modelCat2, glm::vec3(5.0f));
         animShader.use();
         cat2.externalState = IDLE;

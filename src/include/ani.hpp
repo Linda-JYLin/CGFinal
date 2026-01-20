@@ -210,6 +210,7 @@ public:
         else {                             // IDLE (ҡͷ)
             auto w = generateGaussianWaveWeights(time * 1000.0f, 20, 4000.0f, 1.0f);
             std::copy(w.begin(), w.end(), testWeights.begin());
+            //testWeights = generateGaussianWaveWeights(time * 1000.0f, 311, 13000.0f, 1.0f);
         }
 
         for (auto& m : meshes) {
