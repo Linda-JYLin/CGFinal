@@ -36,26 +36,27 @@ public:
     }
 
     static void updatePositionWithPhysics(glm::vec3& pos, float heading, float& speed, float deltaTime, const Terrain& terrain) {
-        float frameTime = glm::min(deltaTime, 0.05f);
+        // 限制 deltaTime 防止大跨步穿墙
+        float frameTime = glm::min(deltaTime, 0.033f);
 
-        // 1. 计算预测位置
-        glm::vec3 nextPos = pos;
+        // 1. 预测
         float moveDist = speed * frameTime;
-        nextPos.x += glm::sin(glm::radians(heading)) * moveDist;
-        nextPos.z += glm::cos(glm::radians(heading)) * moveDist;
+        glm::vec3 direction = glm::vec3(glm::sin(glm::radians(heading)), 0, glm::cos(glm::radians(heading)));
+        glm::vec3 nextPos = pos + direction * moveDist;
         nextPos.y = terrain.getHeightWorld(nextPos.x, nextPos.z);
 
-        // 2. 关键：碰撞检测点上移 (抬高 1.0f)，避免车底卡进地形触发碰撞
+        // 2. 改进的碰撞检测
         glm::vec3 checkCenter = nextPos + glm::vec3(0.0f, 1.0f, 0.0f);
         float carRadius = 1.2f;
 
         if (checkCollision(checkCenter, carRadius)) {
-            // 碰撞反馈：大幅减速并产生微弱反弹，但不完全切断位移，防止视觉瞬间静止
-            speed = -speed * 0.1f;
-            // 这里可以选择不更新 pos，或者让 pos 稍微移动一点点
+            // 发生碰撞时，除了减速，还要给一个微小的反弹位移，防止卡死在物体内部
+            speed = -speed * 0.2f;
+            pos -= direction * 0.1f; // 强制回退一点点，打破“卡住”的循环
         }
         else {
-            pos = nextPos;
+            // 使用平滑过渡更新位置，减少瞬移感
+            pos = glm::mix(pos, nextPos, 0.9f);
         }
     }
 

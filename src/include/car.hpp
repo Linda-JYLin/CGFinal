@@ -32,9 +32,9 @@ public:
             Heading += SteerAngle * (Speed / 50.0f) * deltaTime;
         }
 
-        Position.x += glm::sin(glm::radians(Heading)) * Speed * deltaTime;
-        Position.z += glm::cos(glm::radians(Heading)) * Speed * deltaTime;
-        Position.y = terrainHeight; // 贴地
+        //Position.x += glm::sin(glm::radians(Heading)) * Speed * deltaTime;
+        //Position.z += glm::cos(glm::radians(Heading)) * Speed * deltaTime;
+        //Position.y = terrainHeight; // 贴地
 
         // 4. 车轮自转
         WheelRotation += Speed * deltaTime * 50.0f;

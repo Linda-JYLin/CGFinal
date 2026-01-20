@@ -106,15 +106,7 @@ void processInput(GLFWwindow* window, Car& myCar, Terrain& terrain) {
 
     // --- 3. WASDQE 移动控制 ---
     // WASD 移动
-    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) camera.ProcessKeyboard(FORWARD, deltaTime);
-    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) camera.ProcessKeyboard(BACKWARD, deltaTime);
-    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) camera.ProcessKeyboard(LEFT, deltaTime);
-    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) camera.ProcessKeyboard(RIGHT, deltaTime);
-
     // QE 修改相对于地面的高度
-    float speed = camera.MovementSpeed * deltaTime;
-    if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS) eyeHeight += speed;
-    if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS) eyeHeight -= speed;
 
     // 按 C 键：手动切换【自由探索】和【驾驶模式】
     static bool cPressed = false;
@@ -147,6 +139,9 @@ void processInput(GLFWwindow* window, Car& myCar, Terrain& terrain) {
         if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) camera.ProcessKeyboard(RIGHT, deltaTime);
 
         // 自由模式下可以继续按 QE 调整 eyeHeight 方便观察
+        float speed = camera.MovementSpeed * deltaTime;
+        if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS) eyeHeight += speed;
+        if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS) eyeHeight -= speed;
     }
 }
 
