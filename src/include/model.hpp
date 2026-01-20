@@ -1,21 +1,32 @@
+#pragma once
+
 #include "include/shader.hpp"
-#include <map>
 #include "include/car.hpp"
 
-static Car dummyCar(glm::vec3(0.0f));
+#include <assimp/Importer.hpp>
+#include <assimp/scene.h>
+#include <assimp/postprocess.h>
 
-// ———————— 网格类（Mesh） ————————
-// 顶点类
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+
+#include <vector>
+#include <string>
+#include <map>
+#include <memory>
+#include <iostream>
+#include <cfloat>
+
+// ---------------- Mesh ----------------
 struct Vertex {
-    glm::vec3 Position; // 位置
-    glm::vec3 Normal;   // 法线
+    glm::vec3 Position;
+    glm::vec3 Normal;
     glm::vec2 TexCoords;
 };
 
-// 纹理类
 struct Texture {
-    unsigned int id;
-    std::string type; 
+    unsigned int id = 0;
+    std::string type;
     aiString path;
 };
 
@@ -24,30 +35,28 @@ public:
     std::vector<Vertex> vertices;
     std::vector<unsigned int> indices;
     std::vector<Texture> textures;
-    unsigned int VAO, VBO, EBO;
-    glm::vec3 baseColor;    //用于存储材料基础颜色
+    unsigned int VAO = 0, VBO = 0, EBO = 0;
+    glm::vec3 baseColor = glm::vec3(1.0f);
 
-    Mesh(std::vector<Vertex> vertices, std::vector<unsigned int> indices, std::vector<Texture> textures, glm::vec3 color = glm::vec3(1.0f))
-        : vertices(std::move(vertices)), indices(std::move(indices)), textures(std::move(textures)), baseColor(color) {
+    Mesh(std::vector<Vertex> v, std::vector<unsigned int> i, std::vector<Texture> t, glm::vec3 color = glm::vec3(1.0f))
+        : vertices(std::move(v)), indices(std::move(i)), textures(std::move(t)), baseColor(color)
+    {
         setupMesh();
     }
 
     void Draw(Shader& shader) {
         shader.setVec3("Material_baseColor", baseColor);
+
         bool hasDiffuseMap = false;
 
-        // 只需要找到【第一张】漫反射贴图即可，因为你的 Shader 目前只支持一个采样器
+        // 仅绑定第一张 diffuse 到 texture_diffuse1
         for (unsigned int i = 0; i < textures.size(); i++) {
             glActiveTexture(GL_TEXTURE0 + i);
-            std::string name = textures[i].type;
 
-            // 关键逻辑：无论模型里有多少贴图，我们只把类型为 "texture_diffuse" 
-            // 且是第一张发现的贴图绑定给 shader 里的 texture_diffuse1
-            if (!hasDiffuseMap && name == "texture_diffuse") {
-                shader.setInt("texture_diffuse1", i); // 这里的 i 是纹理单元索引
+            if (!hasDiffuseMap && textures[i].type == "texture_diffuse") {
+                shader.setInt("texture_diffuse1", i);
                 hasDiffuseMap = true;
             }
-
             glBindTexture(GL_TEXTURE_2D, textures[i].id);
         }
 
@@ -66,19 +75,19 @@ private:
         glGenBuffers(1, &EBO);
 
         glBindVertexArray(VAO);
+
         glBindBuffer(GL_ARRAY_BUFFER, VBO);
-        glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(Vertex), &vertices[0], GL_STATIC_DRAW);
+        glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(Vertex), vertices.data(), GL_STATIC_DRAW);
 
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-        glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), &indices[0], GL_STATIC_DRAW);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), indices.data(), GL_STATIC_DRAW);
 
-        // position
         glEnableVertexAttribArray(0);
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)0);
-        // normal
+
         glEnableVertexAttribArray(1);
         glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Normal));
-        // tex coords
+
         glEnableVertexAttribArray(2);
         glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, TexCoords));
 
@@ -86,128 +95,109 @@ private:
     }
 };
 
-// ———————— Model 类（使用 Assimp） ————————
+// ---------------- Texture helpers ----------------
+inline unsigned int TextureFromFile(const char* path, const std::string& directory) {
+    std::string filename = directory + "/" + std::string(path);
 
-unsigned int TextureFromFile(const char* path, const std::string& directory) {
-    std::string filename = std::string(path);
-    filename = directory + "/" + filename; // 拼接完整路径
-
-    unsigned int textureID;
+    unsigned int textureID = 0;
     glGenTextures(1, &textureID);
-    
-    int width, height, nrComponents;
-    // 注意：stbi_load 不支持 .etc_x.png 这种非标准的文件名，它只看文件内容。
-    // 如果您的纹理是 ETC 压缩格式并使用 stb_image 加载，可能会失败。
-    // 但对于标准 PNG，这是可行的。
+
+    int width = 0, height = 0, nrComponents = 0;
     unsigned char* data = stbi_load(filename.c_str(), &width, &height, &nrComponents, 0);
-    if (data) {
-        GLenum format;
-        if (nrComponents == 1) { format = GL_RED; } //std::cerr << "nrComponents == 1" << filename << std::endl; }
-        else if (nrComponents == 3) { format = GL_RGB; }// std::cerr << "nrComponents == 3" << filename << std::endl; }
-        else if (nrComponents == 4) { format = GL_RGBA; }//std::cerr << "nrComponents == 4" << filename << std::endl;}
-        else {
-            std::cerr << "Texture format not supported for " << filename << std::endl;
-            stbi_image_free(data);
-            return 0;
-        }
-
-        glBindTexture(GL_TEXTURE_2D, textureID);
-        glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
-        glGenerateMipmap(GL_TEXTURE_2D);
-
-        // 设置纹理参数
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
-        stbi_image_free(data);
+    if (!data) {
+        std::cerr << "Texture failed to load: " << filename << std::endl;
+        return 0;
     }
+
+    GLenum format = GL_RGBA;
+    if (nrComponents == 1) format = GL_RED;
+    else if (nrComponents == 3) format = GL_RGB;
+    else if (nrComponents == 4) format = GL_RGBA;
     else {
-        std::cerr << "Texture failed to load at path: " << filename << std::endl;
+        std::cerr << "Unsupported texture components: " << nrComponents << " for " << filename << std::endl;
         stbi_image_free(data);
         return 0;
     }
 
+    glBindTexture(GL_TEXTURE_2D, textureID);
+    glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
+    glGenerateMipmap(GL_TEXTURE_2D);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    stbi_image_free(data);
     return textureID;
 }
 
-unsigned int TextureFromMemory(const aiTexture* aiTex) {
+inline unsigned int TextureFromMemory(const aiTexture* aiTex) {
     if (!aiTex) return 0;
 
-    unsigned int textureID;
+    unsigned int textureID = 0;
     glGenTextures(1, &textureID);
 
-    int width, height, nrComponents;
+    int width = 0, height = 0, nrComponents = 0;
     unsigned char* data = nullptr;
 
     if (aiTex->mHeight == 0) {
-        // GLB 通常走这里：数据是压缩格式 (PNG/JPG)
-        // 关键：GLTF 贴图标准是左上角。我们在加载时不翻转，
-        // 配合顶点处理中的 v = v 逻辑。
+        // 压缩图片（png/jpg）
         stbi_set_flip_vertically_on_load(false);
-        data = stbi_load_from_memory(reinterpret_cast<unsigned char*>(aiTex->pcData), aiTex->mWidth, &width, &height, &nrComponents, 0);
+        data = stbi_load_from_memory(reinterpret_cast<unsigned char*>(aiTex->pcData), aiTex->mWidth,
+            &width, &height, &nrComponents, 0);
     }
     else {
-        // 原始数据格式
         width = aiTex->mWidth;
         height = aiTex->mHeight;
         data = reinterpret_cast<unsigned char*>(aiTex->pcData);
         nrComponents = 4;
     }
 
-    if (data) {
-        GLenum format = GL_RGBA;
-        if (nrComponents == 1) format = GL_RED;
-        else if (nrComponents == 3) format = GL_RGB;
-        else if (nrComponents == 4) format = GL_RGBA;
+    if (!data) return 0;
 
-        glBindTexture(GL_TEXTURE_2D, textureID);
-
-        // 【关键修复 1】：强制 1 字节对齐，防止宽度非 4 倍数导致的斜切/错位
-        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-
-        glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
-        glGenerateMipmap(GL_TEXTURE_2D);
-
-        // 【关键修复 2】：对于 GLB 这种紧凑贴图，强烈建议使用 CLAMP_TO_EDGE
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
-        if (aiTex->mHeight == 0) stbi_image_free(data);
-        return textureID;
-    }
-    return 0;
-}
-
-unsigned int TextureFromRawData(void* data, unsigned int width, unsigned int height) {
-    unsigned int textureID;
-    glGenTextures(1, &textureID);
+    GLenum format = GL_RGBA;
+    if (nrComponents == 1) format = GL_RED;
+    else if (nrComponents == 3) format = GL_RGB;
+    else if (nrComponents == 4) format = GL_RGBA;
 
     glBindTexture(GL_TEXTURE_2D, textureID);
-    // 直接上传原始像素数据，跳过解码步骤
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_BGRA, GL_UNSIGNED_BYTE, data);
+
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+
+    glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
     glGenerateMipmap(GL_TEXTURE_2D);
 
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    if (aiTex->mHeight == 0) stbi_image_free(data);
     return textureID;
 }
 
+// ---------------- Model ----------------
 class Model {
 public:
     std::vector<Texture> textures_loaded;
     std::vector<Mesh> meshes;
+
     std::string directory;
-    std::map<std::string, std::string> textureMap;
     std::string TEXTURES_DIR;
 
-    // --- 新增成员 ---
-    Assimp::Importer importer; // 必须作为成员变量，否则函数结束 scene 内存会被释放
+    Assimp::Importer importer;
     const aiScene* scene = nullptr;
 
-    // 修改构造函数：移除暂时不需要的 map 以简化逻辑
-    Model(const std::string& path, const std::string& texture_path) : TEXTURES_DIR(texture_path) {
+    // AABB in "scene final space" (after node transforms)
+    glm::vec3 aabbMin = glm::vec3(FLT_MAX);
+    glm::vec3 aabbMax = glm::vec3(-FLT_MAX);
+    bool aabbValid = false;
+
+public:
+    Model(const std::string& path, const std::string& texture_path)
+        : TEXTURES_DIR(texture_path)
+    {
         loadModel(path);
     }
 
@@ -216,50 +206,128 @@ public:
             drawNode(scene->mRootNode, shader, baseTransform);
         }
     }
-    // 增加 baseTransform 参数
-    // 给赛车用，需要传入 Car 对象来控制轮子
-    void DrawCar(Shader& shader, glm::mat4 baseTransform = glm::mat4(1.0f), Car& car = dummyCar) {
+
+    void DrawCar(Shader& shader, const glm::mat4& baseTransform, Car& car) {
         if (scene && scene->mRootNode) {
             drawNodeCar(scene->mRootNode, shader, baseTransform, car);
         }
     }
 
+    glm::vec3 getAabbCenter() const { return (aabbMin + aabbMax) * 0.5f; }
+    glm::vec3 getAabbSize()   const { return (aabbMax - aabbMin); }
+    float getAabbHeight()     const { return (aabbMax.y - aabbMin.y); }
+
+    // 归一化：基于【最终AABB】而不是 mesh 局部AABB
+    glm::mat4 getNormalizeTransform(bool centerXZ = true, bool liftToGround = true) const {
+        glm::mat4 T(1.0f);
+        if (!aabbValid) return T;
+
+        glm::vec3 center = getAabbCenter();
+        glm::vec3 offset(0.0f);
+
+        if (centerXZ) {
+            offset.x = -center.x;
+            offset.z = -center.z;
+        }
+        if (liftToGround) {
+            offset.y = -aabbMin.y;
+        }
+        else {
+            offset.y = -center.y;
+        }
+
+        return glm::translate(glm::mat4(1.0f), offset);
+    }
+
 private:
     void loadModel(const std::string& path) {
-        // 检查是否为GLB
-        bool isGLB = (path.find(".glb") != std::string::npos || path.find(".gltf") != std::string::npos);
-
-        unsigned int flags = aiProcess_Triangulate | aiProcess_GenSmoothNormals | aiProcess_CalcTangentSpace | aiProcess_FlipUVs;
+        unsigned int flags =
+            aiProcess_Triangulate |
+            aiProcess_GenSmoothNormals |
+            aiProcess_CalcTangentSpace |
+            aiProcess_FlipUVs; // 你原来就开着，先不动
 
         scene = importer.ReadFile(path, flags);
 
-        if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
+        if (!scene || (scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE) || !scene->mRootNode) {
             std::cout << "Assimp error: " << importer.GetErrorString() << std::endl;
             return;
         }
+
+        std::cout << "[Model] Loaded OK. Meshes: " << scene->mNumMeshes
+            << ", Materials: " << scene->mNumMaterials
+            << ", Root: " << scene->mRootNode->mName.C_Str()
+            << std::endl;
+
         directory = path.substr(0, path.find_last_of('/'));
 
-        // 必须清空，防止多次加载/残留
         meshes.clear();
-        processNode(scene->mRootNode, scene, isGLB);
-        
+        textures_loaded.clear();
+
+        processNode(scene->mRootNode, scene);
+
+        // 关键：处理完 meshes 之后，用节点树的最终变换来计算 AABB
+        computeSceneAABB();
     }
 
+    // ---------- Correct AABB computation (includes node transforms) ----------
+    void computeSceneAABB() {
+        aabbMin = glm::vec3(FLT_MAX);
+        aabbMax = glm::vec3(-FLT_MAX);
+        aabbValid = false;
+
+        if (!scene || !scene->mRootNode) return;
+
+        glm::mat4 I(1.0f);
+        computeNodeAABB(scene->mRootNode, I);
+
+        if (!aabbValid) {
+            std::cerr << "[Model] Warning: AABB invalid (no vertices?)" << std::endl;
+        }
+        else {
+            // 可选：输出 AABB 方便你调试
+            // std::cout << "[Model] AABB min=(" << aabbMin.x << "," << aabbMin.y << "," << aabbMin.z << ") "
+            //           << "max=(" << aabbMax.x << "," << aabbMax.y << "," << aabbMax.z << ")\n";
+        }
+    }
+
+    void computeNodeAABB(aiNode* node, const glm::mat4& parent) {
+        glm::mat4 nodeT = convertMatrixToGLM(node->mTransformation);
+        glm::mat4 global = parent * nodeT;
+
+        // node 引用的 mesh，顶点要乘 global 后计入 AABB
+        for (unsigned int i = 0; i < node->mNumMeshes; ++i) {
+            unsigned int meshIndex = node->mMeshes[i];
+            if (meshIndex >= scene->mNumMeshes) continue;
+
+            aiMesh* m = scene->mMeshes[meshIndex];
+            if (!m || !m->mVertices) continue;
+
+            for (unsigned int v = 0; v < m->mNumVertices; ++v) {
+                glm::vec4 p(m->mVertices[v].x, m->mVertices[v].y, m->mVertices[v].z, 1.0f);
+                glm::vec3 pw = glm::vec3(global * p);
+
+                aabbValid = true;
+                aabbMin = glm::min(aabbMin, pw);
+                aabbMax = glm::max(aabbMax, pw);
+            }
+        }
+
+        for (unsigned int c = 0; c < node->mNumChildren; ++c) {
+            computeNodeAABB(node->mChildren[c], global);
+        }
+    }
+
+    // ---------- rendering ----------
     void drawNode(aiNode* node, Shader& shader, glm::mat4 parentTransform) {
         glm::mat4 nodeTransform = convertMatrixToGLM(node->mTransformation);
-        std::string name = node->mName.C_Str();
-
-        // 提取原有的位移和缩放（Assimp 导入时的初始位置）
-        glm::mat4 originNodeTransform = convertMatrixToGLM(node->mTransformation);
-
         glm::mat4 globalTransform = parentTransform * nodeTransform;
 
         for (unsigned int i = 0; i < node->mNumMeshes; i++) {
-            shader.setMat4("model", globalTransform); // 这里现在会包含 main 传进来的 baseTransform
+            shader.setMat4("model", globalTransform);
             meshes[node->mMeshes[i]].Draw(shader);
         }
 
-        // 4. 递归处理子节点
         for (unsigned int i = 0; i < node->mNumChildren; i++) {
             drawNode(node->mChildren[i], shader, globalTransform);
         }
@@ -269,46 +337,31 @@ private:
         glm::mat4 nodeTransform = convertMatrixToGLM(node->mTransformation);
         std::string name = node->mName.C_Str();
 
-        // 提取原有的位移和缩放（Assimp 导入时的初始位置）
-        glm::mat4 originNodeTransform = convertMatrixToGLM(node->mTransformation);
-
         if (name.find("front_tire") != std::string::npos || name.find("rear_tire") != std::string::npos) {
-            // 1. 获取原始变换矩阵
             glm::mat4 originNodeTransform = convertMatrixToGLM(node->mTransformation);
 
-            // 2. 构造局部旋转
-            glm::mat4 localRot = glm::mat4(1.0f);
-
-            // 前轮增加转向
+            glm::mat4 localRot(1.0f);
             if (name.find("front_tire") != std::string::npos) {
                 localRot = glm::rotate(localRot, glm::radians(-car.SteerAngle), glm::vec3(0, 1, 0));
             }
-            // 所有轮子增加滚动
-            //localRot = glm::rotate(localRot, glm::radians(car.WheelRotation), glm::vec3(1, 0, 0));
-
-            // 3. 【关键修改】：将旋转作用在原始变换的“前面”
-            // 在 GLM (列主序) 中，"origin * localRot" 意味着先执行 localRot，再执行 origin 的位移
-            // 这会自动以轮子模型在 Blender 里的原点为中心旋转
             nodeTransform = originNodeTransform * localRot;
         }
 
         glm::mat4 globalTransform = parentTransform * nodeTransform;
 
         for (unsigned int i = 0; i < node->mNumMeshes; i++) {
-            shader.setMat4("model", globalTransform); // 这里现在会包含 main 传进来的 baseTransform
+            shader.setMat4("model", globalTransform);
             meshes[node->mMeshes[i]].Draw(shader);
         }
 
-        // 4. 递归处理子节点
         for (unsigned int i = 0; i < node->mNumChildren; i++) {
             drawNodeCar(node->mChildren[i], shader, globalTransform, car);
         }
     }
 
-    // 辅助函数：Assimp 矩阵转 GLM 矩阵
+    // ---------- Assimp -> GLM ----------
     glm::mat4 convertMatrixToGLM(const aiMatrix4x4& from) {
         glm::mat4 to;
-        // 注意：Assimp 的 a1, a2, a3, a4 对应 GLM 的第一列
         to[0][0] = from.a1; to[0][1] = from.b1; to[0][2] = from.c1; to[0][3] = from.d1;
         to[1][0] = from.a2; to[1][1] = from.b2; to[1][2] = from.c2; to[1][3] = from.d2;
         to[2][0] = from.a3; to[2][1] = from.b3; to[2][2] = from.c3; to[2][3] = from.d3;
@@ -316,90 +369,81 @@ private:
         return to;
     }
 
-    void processNode(aiNode* node, const aiScene* scene, bool isGLB) {
+    // ---------- mesh extraction ----------
+    void processNode(aiNode* node, const aiScene* sc) {
         for (unsigned int i = 0; i < node->mNumMeshes; i++) {
-            aiMesh* mesh = scene->mMeshes[node->mMeshes[i]];
-            meshes.push_back(processMesh(mesh, scene, isGLB));
+            aiMesh* mesh = sc->mMeshes[node->mMeshes[i]];
+            meshes.push_back(processMesh(mesh, sc));
         }
         for (unsigned int i = 0; i < node->mNumChildren; i++) {
-            processNode(node->mChildren[i], scene, isGLB);
+            processNode(node->mChildren[i], sc);
         }
     }
 
-    Mesh processMesh(aiMesh* mesh, const aiScene* scene, bool isGLB) {
+    Mesh processMesh(aiMesh* mesh, const aiScene* sc) {
         std::vector<Vertex> vertices;
         std::vector<unsigned int> indices;
         std::vector<Texture> textures;
 
-        // 处理顶点
+        std::cout << "[Mesh] name=" << mesh->mName.C_Str()
+            << " verts=" << mesh->mNumVertices
+            << " faces=" << mesh->mNumFaces
+            << std::endl;
+
+        vertices.reserve(mesh->mNumVertices);
+
         for (unsigned int i = 0; i < mesh->mNumVertices; i++) {
             Vertex vertex;
-            // 位置
             vertex.Position = glm::vec3(mesh->mVertices[i].x, mesh->mVertices[i].y, mesh->mVertices[i].z);
-            // 法线
-            if (mesh->mNormals)
+
+            if (mesh->mNormals) {
                 vertex.Normal = glm::vec3(mesh->mNormals[i].x, mesh->mNormals[i].y, mesh->mNormals[i].z);
-           /* else
-                vertex.Normal = glm::vec3(0.0f, 1.0f, 0.0f);*/
-            // 纹理坐标 (仅处理第一组 UV)
-            // 在 processMesh 函数的纹理坐标循环中：
+            }
+            else {
+                vertex.Normal = glm::vec3(0.0f, 1.0f, 0.0f);
+            }
+
             if (mesh->mTextureCoords[0]) {
-                glm::vec2 vec;
-                vec.x = mesh->mTextureCoords[0][i].x;
-                vec.y = mesh->mTextureCoords[0][i].y;
-
-                // 如果你在加载图片时 stbi_set_flip_vertically_on_load(false);
-                // 那么对于 GLB，这里通常不需要处理。
-                // 如果发现贴图上下颠倒，请将下一行取消注释：
-                // vec.y = 1.0f - vec.y; 
-
-                vertex.TexCoords = vec;
+                vertex.TexCoords = glm::vec2(mesh->mTextureCoords[0][i].x, mesh->mTextureCoords[0][i].y);
             }
             else {
                 vertex.TexCoords = glm::vec2(0.0f, 0.0f);
             }
+
             vertices.push_back(vertex);
         }
 
-        // 处理索引
         for (unsigned int i = 0; i < mesh->mNumFaces; i++) {
-            aiFace face = mesh->mFaces[i];
-            for (unsigned int j = 0; j < face.mNumIndices; j++)
+            const aiFace& face = mesh->mFaces[i];
+            for (unsigned int j = 0; j < face.mNumIndices; j++) {
                 indices.push_back(face.mIndices[j]);
+            }
         }
 
-        // 处理材质
-        aiMaterial* material = scene->mMaterials[mesh->mMaterialIndex];
-        
-        // 1. 获取漫反射贴图 (针对 OBJ)
-        std::vector<Texture> diffuseMaps = loadMaterialTextures(material, aiTextureType_DIFFUSE, "texture_diffuse", scene);
+        aiMaterial* material = sc->mMaterials[mesh->mMaterialIndex];
 
-        // 2. 如果是 GLB 或 Diffuse 为空，尝试加载 BaseColor (针对 PBR GLB)
+        // diffuse / baseColor map
+        auto diffuseMaps = loadMaterialTextures(material, aiTextureType_DIFFUSE, "texture_diffuse", sc);
         if (diffuseMaps.empty()) {
-            diffuseMaps = loadMaterialTextures(material, aiTextureType_BASE_COLOR, "texture_diffuse", scene);
+            diffuseMaps = loadMaterialTextures(material, aiTextureType_BASE_COLOR, "texture_diffuse", sc);
         }
         textures.insert(textures.end(), diffuseMaps.begin(), diffuseMaps.end());
 
-        // 3. 处理颜色 (Vector3)
-        aiColor4D color(1.0f, 1.0f, 1.0f, 1.0f);
+        aiColor4D color(1, 1, 1, 1);
         if (AI_SUCCESS != aiGetMaterialColor(material, AI_MATKEY_BASE_COLOR, &color)) {
             aiGetMaterialColor(material, AI_MATKEY_COLOR_DIFFUSE, &color);
         }
 
-        return Mesh(vertices, indices, textures, glm::vec3(color.r, color.g, color.b));
+        return Mesh(std::move(vertices), std::move(indices), std::move(textures), glm::vec3(color.r, color.g, color.b));
     }
-    
-    std::vector<Texture> loadMaterialTextures(aiMaterial* mat, aiTextureType type, std::string typeName, const aiScene* scene) {
+
+    std::vector<Texture> loadMaterialTextures(aiMaterial* mat, aiTextureType type, const std::string& typeName, const aiScene* sc) {
         std::vector<Texture> textures;
-        //if (!mat || !scene) return textures; // 防御性编程
 
         for (unsigned int i = 0; i < mat->GetTextureCount(type); i++) {
             aiString str;
             mat->GetTexture(type, i, &str);
 
-            std::string textureKey = str.C_Str();
-
-            // Step 1: 检查是否已加载
             bool skip = false;
             for (const auto& loadedTex : textures_loaded) {
                 if (loadedTex.path == str) {
@@ -412,31 +456,27 @@ private:
 
             Texture texture;
             texture.type = typeName;
-            texture.path = str; // 保留原始路径用于查重
+            texture.path = str;
             texture.id = 0;
 
-            std::string actualFilename;
-
-            if (textureKey.size() > 0 && textureKey[0] == '*') {
-                // 如果是内嵌贴图，直接从 scene 中获取
-                const aiTexture* aiTex = scene->GetEmbeddedTexture(textureKey.c_str());
-                if (aiTex) {
-                    texture.id = TextureFromMemory(aiTex);
-                }
+            std::string key = str.C_Str();
+            if (!key.empty() && key[0] == '*') {
+                const aiTexture* aiTex = sc->GetEmbeddedTexture(key.c_str());
+                if (aiTex) texture.id = TextureFromMemory(aiTex);
             }
-            else if (!textureKey.empty()) {
-                // 处理外部文件 (OBJ)
-                texture.id = TextureFromFile(textureKey.c_str(), TEXTURES_DIR);
+            else if (!key.empty()) {
+                texture.id = TextureFromFile(key.c_str(), TEXTURES_DIR);
             }
 
-            if(texture.id != 0) {
+            if (texture.id != 0) {
                 textures.push_back(texture);
                 textures_loaded.push_back(texture);
             }
             else {
-                std::cerr << "Failed to load texture: " << textureKey << " from dir: " << TEXTURES_DIR << std::endl;
+                std::cerr << "Failed to load texture: " << key << " (dir=" << TEXTURES_DIR << ")\n";
             }
         }
+
         return textures;
     }
 };

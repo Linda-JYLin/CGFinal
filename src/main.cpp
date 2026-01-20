@@ -25,6 +25,7 @@
 #include "include/terrain/terrain.hpp"
 #include "include/ani.hpp"
 #include "include/collision.hpp"
+#include "include/vegetation/vegetation.hpp"
 
 // ———————— 全局变量 ————————
 const unsigned int SCR_WIDTH = 800;
@@ -184,6 +185,17 @@ int main() {
     Shader ourShader((std::string(SHADERS_FOLDER) + "model.vs").c_str(), (std::string(SHADERS_FOLDER) + "model.fs").c_str());
     Shader animShader((std::string(SHADERS_FOLDER) + "ani.vs").c_str(), (std::string(SHADERS_FOLDER) + "model.fs").c_str());
 
+    Shader treeShader(
+        (std::string(SHADERS_FOLDER) + "tree.vs").c_str(),
+        (std::string(SHADERS_FOLDER) + "tree.fs").c_str()
+    );
+    // 太阳方向（从太阳指向地面）
+    glm::vec3 sunDir = glm::normalize(glm::vec3(-0.3f, -1.0f, -0.4f));
+    treeShader.use();
+    treeShader.setVec3("light.position", sunDir);
+    treeShader.setVec3("light.color", glm::vec3(1.0f));
+    treeShader.setVec3("viewPos", camera.Position);
+
     std::map<std::string, std::string> carTextureMap;
     // 猫模型是obj和mtl所以textureMap可以为空
     std::map<std::string, std::string> cattextureMap;
@@ -205,17 +217,26 @@ int main() {
     Skybox skybox(faces);
 
     // 初始化地形
-    //Terrain terrain(
-    //    ASSETS_FOLDER "terrain/heightmap_2049.png",
-    //    1800.0f,
-    //    64, 64, 33, 1.0f
-    //);
     Terrain terrain(
-        ASSETS_FOLDER "terrain/heightmap_4097.png",
+        ASSETS_FOLDER "terrain/heightmap_2049.png",
         1800.0f,
-        128, 128, 33, 1.0f
+        64, 64, 33, 1.0f
     );
+    //Terrain terrain(
+    //    ASSETS_FOLDER "terrain/heightmap_4097.png",
+    //    1800.0f,
+    //    128, 128, 33, 1.0f
+    //);
     terrain.setLODDistances(200.0f, 600.0f, 1400.0f);
+
+    auto vegetation = CreateDefaultVegetationManager(
+        terrain,
+        20260120,     // seed
+        -1000.0f, 1000.0f,
+        -1000.0f, 1000.0f,
+        { 10.0f, 10.0f },   // flowerCenter
+        10.0f   // flowerRadius
+    );
 
     // ———————— 渲染循环 ————————
     while (!glfwWindowShouldClose(window)) {
@@ -273,7 +294,7 @@ int main() {
             glm::vec3 lookTarget = myCar.Position + glm::vec3(0.0f, 1.2f, 0.0f);
 
             // --- 2. 核心改进：先插值，再修正，最后赋值 ---
-            float followSpeed = 10.0f;
+            float followSpeed = 5.0f;
             // a. 先计算出“想去哪里”
             glm::vec3 nextCamPos = glm::mix(camera.Position, targetCameraPos, glm::clamp(followSpeed * deltaTime, 0.0f, 1.0f));
 
@@ -397,6 +418,9 @@ int main() {
 
         // -------------画地形---------------------------
         terrain.render(view, projection, camera.Position);
+
+        // ----------------- 画植被 -----------------
+        vegetation->render(terrain, treeShader, view, projection, camera.Position);
 
         // ------------画天空盒（最后画天空盒！！不然其它模型会被它挡住）-----------------------
         skybox.draw(view, projection);

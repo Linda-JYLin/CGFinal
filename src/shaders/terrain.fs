@@ -7,61 +7,72 @@ in VS_OUT {
     vec2 TexCoords;
 } fs_in;
 
-// ========== 纹理 ==========
-uniform sampler2D grassTex;
-uniform sampler2D snowTex;
+// ========== Textures ==========
+uniform sampler2D grassLowTex;
+uniform sampler2D grassHighTex;
 uniform sampler2D noiseTex;
 
-// ========== 参数 ==========
+// ========== Params ==========
 uniform float uvScale;
 
+// Height thresholds: low -> high
+uniform float grassLowMaxHeight;
+uniform float grassHighMinHeight;
 
-// 低于 grassMaxHeight -> 纯草地
-// 高于 snowMinHeight  -> 纯雪地
-// 中间区域          -> 草地过渡到雪地
-uniform float grassMaxHeight; 
-uniform float snowMinHeight;
+// Blend controls
+uniform float blendWidth;      // transition band width in world height units
+uniform float blendNoiseScale; // noise frequency (world xz)
+uniform float blendNoiseAmp;   // noise influence (0~1)
+uniform float blendPower;      // curve shaping (>=1)
 
-uniform float noiseScale;
-uniform float noiseStrength;
-
-// 光照
-uniform vec3 lightDir;
+// Lighting
+uniform vec3 lightDir;   // directional light direction (world)
 uniform vec3 lightColor;
 
 void main()
 {
-    // ---------- 法线 ----------
+    // ---------- Normal ----------
     vec3 N = normalize(fs_in.Normal);
-    
 
-    // ---------- 高度 + 噪声 ----------
-    float noise = texture(noiseTex, fs_in.FragPos.xz * noiseScale).r;
-    noise = noise * 2.0 - 1.0; // 映射到 -1 到 1
-
-    float h = fs_in.FragPos.y + noise * noiseStrength;
-
-    // ---------- 高度权重 (混合因子) ----------
-    // smoothstep 返回 0.0 到 1.0 之间的值
-    // 如果 h < grassMaxHeight，返回 0.0 (全草)
-    // 如果 h > snowMinHeight， 返回 1.0 (全雪)
-    float snowFactor = smoothstep(grassMaxHeight, snowMinHeight, h);
-
-    // ---------- 采样 ----------
+    // ---------- Base UV ----------
     vec2 uv = fs_in.TexCoords * uvScale;
+    // 如果你发现地形UV拉伸/接缝明显，可以改成：
+    // vec2 uv = fs_in.FragPos.xz * uvScale;
 
-    vec4 grass = texture(grassTex, uv);
-    vec4 snow  = texture(snowTex,  uv);
-    
+    // ---------- Sample textures ----------
+    vec3 lowCol  = texture(grassLowTex,  uv).rgb;
+    vec3 highCol = texture(grassHighTex, uv).rgb;
 
-    // ---------- 混合 ----------
-    vec4 finalColor = mix(grass, snow, snowFactor);
+    // ---------- Compute blend factor ----------
+    // 过渡中心高度：两阈值的中点
+    float center = 0.5 * (grassLowMaxHeight + grassHighMinHeight);
 
-    // ---------- 光照 ----------
+    // 过渡半宽：避免直接用两个阈值做 smoothstep 产生“色带”
+    float halfW = 0.5 * blendWidth;
+
+    // 低频噪声用于扰动边界（让过渡自然碎裂）
+    float n = texture(noiseTex, fs_in.FragPos.xz * blendNoiseScale).r;
+    n = n * 2.0 - 1.0; // [-1, 1]
+
+    // 用噪声扰动“过渡判断高度”
+    float h2 = fs_in.FragPos.y + n * (blendNoiseAmp * blendWidth);
+
+    // factor: 0 -> low grass, 1 -> high grass
+    // 如果你更喜欢“低处基本全 low，高处全 high”，这比直接用两个阈值更好控
+    float factor = smoothstep(center - halfW, center + halfW, h2);
+
+    // 可选：再塑形，让过渡带更自然（减少“平均混合”的塑料感）
+    factor = pow(clamp(factor, 0.0, 1.0), blendPower);
+
+    // ---------- Blend ----------
+    vec3 albedo = mix(lowCol, highCol, factor);
+
+    // ---------- Lighting (Lambert + ambient) ----------
     float diff = max(dot(N, -normalize(lightDir)), 0.0);
-    vec3 lighting = diff * lightColor;
+    vec3 direct = diff * lightColor;
+    vec3 ambient = 0.12 * lightColor; // 可调：0.08~0.25
 
-    // 加上环境光(Ambient)防止背光面全黑:
-    vec3 ambient = 0.1 * lightColor;
-    FragColor = vec4(finalColor.rgb * (lighting + ambient), 1.0);
+    vec3 color = albedo * (direct + ambient);
+
+    FragColor = vec4(color, 1.0);
 }

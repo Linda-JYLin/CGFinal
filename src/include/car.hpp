@@ -17,8 +17,8 @@ public:
 
     void Update(float deltaTime, float terrainHeight, bool w, bool s, bool a, bool d) {
         // 1. 处理动力
-        if (w) Speed += 20.0f * deltaTime;
-        else if (s) Speed -= 20.0f * deltaTime;
+        if (w) Speed += 10.0f * deltaTime;
+        else if (s) Speed -= 10.0f * deltaTime;
         else Speed *= 0.98f; // 阻尼
 
         // 2. 处理转向 (只有在移动时才能转向)
