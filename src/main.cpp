@@ -257,16 +257,10 @@ int main() {
         catAABB.min = catPos - glm::vec3(catHitBoxSize, 0.0f, catHitBoxSize);
         catAABB.max = catPos + glm::vec3(catHitBoxSize, catHitBoxSize * 1.5f, catHitBoxSize);
         CollisionSystem::getObstacles().push_back(catAABB);
-
+        
         // --- 3. 处理赛车的物理位移 (现在它能看到猫了) ---
         processInput(window, myCar, terrain);
-        CollisionSystem::updatePositionWithPhysics(
-            myCar.Position,
-            myCar.Heading,
-            myCar.Speed, // 注意：CollisionSystem 里的 speed 应该是引用 float& speed
-            deltaTime,
-            terrain
-        );
+        CollisionSystem::updatePositionWithPhysics(myCar.Position, myCar.Heading, myCar.Speed, deltaTime, terrain);
 
         if (driveMode) {
             // --- 1. 计算理想偏移位置 ---
@@ -278,26 +272,29 @@ int main() {
             offset.z = -glm::cos(glm::radians(myCar.Heading)) * distance;
             offset.y = height;
 
-            // 理想的目标位置（车后上方）
+            // 理想目标点
             glm::vec3 targetCameraPos = myCar.Position + offset;
+            // 观察目标点（车身中心略往上）
             glm::vec3 lookTarget = myCar.Position + glm::vec3(0.0f, 1.2f, 0.0f);
 
-            // --- 2. 定义并计算 nextCamPos (插值后的临时位置) ---
-            float followSpeed = 15.0f;
-            // 这里定义 nextCamPos
+            // --- 2. 核心改进：先插值，再修正，最后赋值 ---
+            float followSpeed = 10.0f;
+            // a. 先计算出“想去哪里”
             glm::vec3 nextCamPos = glm::mix(camera.Position, targetCameraPos, glm::clamp(followSpeed * deltaTime, 0.0f, 1.0f));
 
-            // --- 3. 核心：修正 nextCamPos 防止入地 ---
-            // 只有经过碰撞系统检查后的位置，才能赋给 camera.Position
-            camera.Position = CollisionSystem::resolveCameraCollision(nextCamPos, terrain);
+            // b. 修正这个位置（防止入地），如果不想要这个功能，直接注释掉下面这行
+            //nextCamPos = CollisionSystem::resolveCameraCollision(nextCamPos, terrain);
 
-            // --- 4. 重新计算朝向 (保持不变) ---
+            // c. 统一赋值给相机位置
+            camera.Position = nextCamPos;
+
+            // --- 3. 计算朝向 (基于最终位置) ---
             glm::vec3 lookDirection = glm::normalize(lookTarget - camera.Position);
             camera.Front = lookDirection;
             camera.Right = glm::normalize(glm::cross(camera.Front, glm::vec3(0.0f, 1.0f, 0.0f)));
             camera.Up = glm::normalize(glm::cross(camera.Right, camera.Front));
 
-            // 反推角度数据同步
+            // --- 4. 同步欧拉角（防止与摄像机控制系统的输入冲突） ---
             camera.Yaw = glm::degrees(atan2(camera.Front.z, camera.Front.x));
             camera.Pitch = glm::degrees(asin(camera.Front.y));
         }

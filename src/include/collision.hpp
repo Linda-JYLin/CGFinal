@@ -36,26 +36,26 @@ public:
     }
 
     static void updatePositionWithPhysics(glm::vec3& pos, float heading, float& speed, float deltaTime, const Terrain& terrain) {
-        const float stepTime = 0.005f;
-        float remainingTime = deltaTime;
-        float carRadius = 1.0f; // 赛车的碰撞体积大小
+        float frameTime = glm::min(deltaTime, 0.05f);
 
-        while (remainingTime > 0.0f) {
-            float dt = glm::min(remainingTime, stepTime);
-            glm::vec3 oldPos = pos;
+        // 1. 计算预测位置
+        glm::vec3 nextPos = pos;
+        float moveDist = speed * frameTime;
+        nextPos.x += glm::sin(glm::radians(heading)) * moveDist;
+        nextPos.z += glm::cos(glm::radians(heading)) * moveDist;
+        nextPos.y = terrain.getHeightWorld(nextPos.x, nextPos.z);
 
-            // 尝试前进
-            pos.x += glm::sin(glm::radians(heading)) * speed * dt;
-            pos.z += glm::cos(glm::radians(heading)) * speed * dt;
-            pos.y = terrain.getHeightWorld(pos.x, pos.z);
+        // 2. 关键：碰撞检测点上移 (抬高 1.0f)，避免车底卡进地形触发碰撞
+        glm::vec3 checkCenter = nextPos + glm::vec3(0.0f, 1.0f, 0.0f);
+        float carRadius = 1.2f;
 
-            // 检查这一小步是否撞到了猫
-            if (checkCollision(pos, carRadius)) {
-                pos = oldPos;         // 撞到了，退回上一步的位置
-                speed = -speed * 0.5f; // 速度反向（反弹效果）
-                break;                // 停止本帧后续的小步移动
-            }
-            remainingTime -= dt;
+        if (checkCollision(checkCenter, carRadius)) {
+            // 碰撞反馈：大幅减速并产生微弱反弹，但不完全切断位移，防止视觉瞬间静止
+            speed = -speed * 0.1f;
+            // 这里可以选择不更新 pos，或者让 pos 稍微移动一点点
+        }
+        else {
+            pos = nextPos;
         }
     }
 
