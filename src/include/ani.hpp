@@ -78,7 +78,6 @@ public:
 
             for (size_t j = 0; j < animatedVertices.size(); ++j) {
                 animatedVertices[j].Position += morphTargets[i].Positions[j] * weight;
-                // 注意：Assimp 存储的 Morph 是位移增量(Offset)，所以是 +=
             }
         }
 
@@ -134,16 +133,10 @@ public:
 
         float twoSigmaSq = 2.0f * sigma * sigma;
 
-        // 3. 遍历计算（如果想要性能极致，可以使用之前的 startIdx/endIdx 优化）
+        // 3. 遍历计算
         for (int i = 0; i < numMorphs; ++i) {
             float diff = static_cast<float>(i) - mu;
 
-            // --- 可选：环回处理 (Circular Loop) ---
-            // 如果你希望波形在末尾和开头连起来，解除下面注释：
-            /*
-            if (diff > numMorphs / 2.0f) diff -= numMorphs;
-            if (diff < -numMorphs / 2.0f) diff += numMorphs;
-            */
 
             float w = 0.5f * std::exp(-(diff * diff) / twoSigmaSq);
             weights[i] = w;
@@ -152,7 +145,6 @@ public:
         return weights;
     }
 
-    // 主运行函数：每一帧调用
     void UpdateAndDraw(Shader& shader, float currentTime, glm::mat4 baseTransform) {
         if (!scene || scene->mNumAnimations == 0) {
             // 如果没动画，直接画静态的
@@ -263,9 +255,6 @@ private:
         glGenTextures(1, &textureID);
 
         int width, height, nrComponents;
-        // 注意：stbi_load 不支持 .etc_x.png 这种非标准的文件名，它只看文件内容。
-        // 如果您的纹理是 ETC 压缩格式并使用 stb_image 加载，可能会失败。
-        // 但对于标准 PNG，这是可行的。
         unsigned char* data = stbi_load(filename.c_str(), &width, &height, &nrComponents, 0);
         if (data) {
             GLenum format;
@@ -303,7 +292,6 @@ private:
         std::vector<AniVertex> vertices;
         std::vector<unsigned int> indices;
 
-        // 基础几何数据加载... (省略部分重复的 Vertex/Index 加载代码)
         for (unsigned int i = 0; i < mesh->mNumVertices; i++) {
             AniVertex v;
             v.Position = glm::vec3(mesh->mVertices[i].x, mesh->mVertices[i].y, mesh->mVertices[i].z);
@@ -322,7 +310,6 @@ private:
         for (unsigned int i = 0; i < material->GetTextureCount(aiTextureType_DIFFUSE); i++) {
             aiString str;
             material->GetTexture(aiTextureType_DIFFUSE, i, &str);
-            // 这里需要一个辅助函数来加载贴图文件并返回 OpenGL ID
             AniTexture texture;
             texture.id = TextureFromFile(str.C_Str(), this->TEXTURES_DIR);
             texture.type = "texture_diffuse";
@@ -333,7 +320,7 @@ private:
         // 使用加载到的 textures 初始化 Mesh
         AniMesh newMesh(vertices, indices, textures, glm::vec3(1.0f));
 
-        // --- 加载 Morph Targets (形态键) ---
+        // --- 加载形态键 ---
         for (unsigned int i = 0; i < mesh->mNumAnimMeshes; i++) {
             aiAnimMesh* animMesh = mesh->mAnimMeshes[i];
             MorphTarget target;
@@ -444,7 +431,6 @@ private:
         float factor = 0.0f;
         if (t2 - t1 > 0.0001f) factor = (time - t1) / (t2 - t1);
 
-        // 关键修复：aiMeshKey 的 mValue 存储的就是该形态键的权重
         float weight = glm::mix((float)anim->mKeys[frame].mValue, (float)anim->mKeys[nextFrame].mValue, factor);
         w.push_back(weight);
 

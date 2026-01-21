@@ -44,7 +44,6 @@ bool driveMode = true;
 float deltaTime = 0.0f;
 float lastFrame = 0.0f;
 
-//补充俯视模式状态
 bool topView = false;   //是否处于俯视模式
 glm::vec3 originalCameraPos;    //保存原始相机位置
 glm::vec3 originalCameraFront;  //保存原始相机朝向
@@ -58,7 +57,6 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height) {
 
 void mouse_callback(GLFWwindow* window, double xposIn, double yposIn) {
     if (!cursorLocked) {
-        // 如果没有锁定鼠标，仅仅记录坐标，不更新相机视角
         lastX = static_cast<float>(xposIn);
         lastY = static_cast<float>(yposIn);
         return;
@@ -83,9 +81,6 @@ void mouse_callback(GLFWwindow* window, double xposIn, double yposIn) {
 }
 
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset) {
-    // 控制 Zoom（FOV）
-     /*camera.ProcessMouseScroll(static_cast<float>(yoffset));*/
-
      camera.Position += camera.Front * static_cast<float>(yoffset) * 2.0f;
 }
 
@@ -93,7 +88,6 @@ void processInput(GLFWwindow* window, Car& myCar, Terrain& terrain) {
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
         glfwSetWindowShouldClose(window, true);
 
-    // --- 2. 左Alt键：控制鼠标视角锁定 ---
     static bool altPressed = false;
     if (glfwGetKey(window, GLFW_KEY_LEFT_ALT) == GLFW_PRESS) {
         if (!altPressed) {
@@ -108,14 +102,12 @@ void processInput(GLFWwindow* window, Car& myCar, Terrain& terrain) {
     // --- 3. WASDQE 移动控制 ---
     // WASD 移动
     // QE 修改相对于地面的高度
-
     // 按 C 键：手动切换【自由探索】和【驾驶模式】
     static bool cPressed = false;
     if (glfwGetKey(window, GLFW_KEY_C) == GLFW_PRESS) {
         if (!cPressed) {
             driveMode = !driveMode;
             cPressed = true;
-            // 如果切回驾驶模式，可以重置一些相机状态
             if (driveMode) firstMouse = true;
         }
     }
@@ -139,7 +131,6 @@ void processInput(GLFWwindow* window, Car& myCar, Terrain& terrain) {
         if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) camera.ProcessKeyboard(LEFT, deltaTime);
         if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) camera.ProcessKeyboard(RIGHT, deltaTime);
 
-        // 自由模式下可以继续按 QE 调整 eyeHeight 方便观察
         float speed = camera.MovementSpeed * deltaTime;
         if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS) eyeHeight += speed;
         if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS) eyeHeight -= speed;
@@ -196,10 +187,6 @@ int main() {
     treeShader.setVec3("light.color", glm::vec3(1.0f));
     treeShader.setVec3("viewPos", camera.Position);
 
-    std::map<std::string, std::string> carTextureMap;
-    // 猫模型是obj和mtl所以textureMap可以为空
-    std::map<std::string, std::string> cattextureMap;
-
     AniModel cat1((std::string(ASSETS_FOLDER) + "munchkin_cat2/scene.gltf").c_str(), (std::string(ASSETS_FOLDER) + "munchkin_cat2/").c_str());
     glm::vec3 catPos(-2.0f, 0.0f, -5.0f);//猫的初始位置
     Model mclaren((std::string(ASSETS_FOLDER) + "car/f1_2025_mclaren_mcl39.glb").c_str(), (std::string(ASSETS_FOLDER) + "car/").c_str());
@@ -224,11 +211,6 @@ int main() {
         1800.0f,
         64, 64, 33, 1.0f
     );
-    //Terrain terrain(
-    //    ASSETS_FOLDER "terrain/heightmap_4097.png",
-    //    1800.0f,
-    //    128, 128, 33, 1.0f
-    //);
     terrain.setLODDistances(200.0f, 600.0f, 1400.0f);
 
     auto vegetation = CreateDefaultVegetationManager(
@@ -250,7 +232,6 @@ int main() {
         CollisionSystem::clearObstacles();
 
         // --- 2. 处理猫的逻辑 (移动猫并生成碰撞盒) ---
-        // 逻辑：先计算猫的位置，再把位置告诉碰撞系统
         catPos.y = terrain.getHeightWorld(catPos.x, catPos.z);
 
         // 状态机与距离计算
@@ -268,8 +249,7 @@ int main() {
         catPos.z += catMoveSpeed * deltaTime;
         catPos.y = terrain.getHeightWorld(catPos.x, catPos.z);
 
-        // 【关键步骤】将移动后的猫注册到碰撞系统
-        // 注意：猫缩放了10倍，所以碰撞盒大小大约设为 2.0f 到 3.0f 左右
+        // 猫注册到碰撞系统
         BoundingBox catAABB;
         float catHitBoxSize = 2.5f;
         catAABB.min = catPos - glm::vec3(catHitBoxSize, 0.0f, catHitBoxSize);
@@ -281,7 +261,7 @@ int main() {
         CollisionSystem::updatePositionWithPhysics(myCar.Position, myCar.Heading, myCar.Speed, deltaTime, terrain);
 
         if (driveMode) {
-            // --- 1. 计算理想偏移位置 ---
+            // 计算理想偏移位置
             float distance = 4.5f;
             float height = 2.5f;
 
@@ -292,35 +272,26 @@ int main() {
 
             // 理想目标点
             glm::vec3 targetCameraPos = myCar.Position + offset;
-            // 观察目标点（车身中心略往上）
+            // 观察目标点
             glm::vec3 lookTarget = myCar.Position + glm::vec3(0.0f, 3.0f, 0.0f);
 
-            // --- 2. 核心改进：先插值，再修正，最后赋值 ---
             float followSpeed = 5.0f;
-            // a. 先计算出“想去哪里”
             glm::vec3 nextCamPos = glm::mix(camera.Position, targetCameraPos, glm::clamp(followSpeed * deltaTime, 0.0f, 1.0f));
-
-            // b. 修正这个位置（防止入地），如果不想要这个功能，直接注释掉下面这行
-            //nextCamPos = CollisionSystem::resolveCameraCollision(nextCamPos, terrain);
-
-            // c. 统一赋值给相机位置
             camera.Position = nextCamPos;
 
-            // --- 3. 计算朝向 (基于最终位置) ---
+            // 计算朝向
             glm::vec3 lookDirection = glm::normalize(lookTarget - camera.Position);
             camera.Front = lookDirection;
             camera.Right = glm::normalize(glm::cross(camera.Front, glm::vec3(0.0f, 1.0f, 0.0f)));
             camera.Up = glm::normalize(glm::cross(camera.Right, camera.Front));
 
-            // --- 4. 同步欧拉角（防止与摄像机控制系统的输入冲突） ---
+            // 同步欧拉角
             camera.Yaw = glm::degrees(atan2(camera.Front.z, camera.Front.x));
             camera.Pitch = glm::degrees(asin(camera.Front.y));
         }
         else if (!topView) {
             // 获取当前位置的地形高度
             float groundY = terrain.getHeightWorld(camera.Position.x, camera.Position.z);
-
-            // 关键：相机的 Y = 当前地形高度 + 我们的手动偏移量
             camera.Position.y = groundY + eyeHeight;
         }
 
@@ -378,7 +349,7 @@ int main() {
         rotation[1] = glm::vec4(normal, 0.0f);
         rotation[2] = glm::vec4(actualForward, 0.0f);
 
-        float carHeightOffset = 0.50f;  //因为origin是在body正中间，所以需要添加偏移量增加底盘相对地形告诉
+        float carHeightOffset = 0.50f;
         glm::vec3 adjustedPose = myCar.Position;
         adjustedPose += carHeightOffset;
 

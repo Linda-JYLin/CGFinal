@@ -36,8 +36,6 @@ void main()
 
     // ---------- Base UV ----------
     vec2 uv = fs_in.TexCoords * uvScale;
-    // 如果你发现地形UV拉伸/接缝明显，可以改成：
-    // vec2 uv = fs_in.FragPos.xz * uvScale;
 
     // ---------- Sample textures ----------
     vec3 lowCol  = texture(grassLowTex,  uv).rgb;
@@ -58,10 +56,8 @@ void main()
     float h2 = fs_in.FragPos.y + n * (blendNoiseAmp * blendWidth);
 
     // factor: 0 -> low grass, 1 -> high grass
-    // 如果你更喜欢“低处基本全 low，高处全 high”，这比直接用两个阈值更好控
     float factor = smoothstep(center - halfW, center + halfW, h2);
 
-    // 可选：再塑形，让过渡带更自然（减少“平均混合”的塑料感）
     factor = pow(clamp(factor, 0.0, 1.0), blendPower);
 
     // ---------- Blend ----------

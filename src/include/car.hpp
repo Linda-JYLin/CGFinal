@@ -8,7 +8,7 @@
 class Car {
 public:
     glm::vec3 Position;
-    float Heading;      // 赛车朝向（偏航角）
+    float Heading;      // 赛车朝向
     float Speed;
     float SteerAngle;   // 前轮转向角
     float WheelRotation;// 车轮自转角
@@ -50,11 +50,10 @@ public:
         // 3. 计算贴合地面的右向量 (Right = Forward x Normal)
         glm::vec3 right = glm::normalize(glm::cross(forward, normal));
 
-        // 4. 重新计算贴合地面的真正前向量 (ActualForward = Normal x Right)
-        // 这样赛车的前方就会根据地形坡度自动抬起或低下
+        // 4. 计算贴合地面
         glm::vec3 actualForward = glm::normalize(glm::cross(normal, right));
 
-        // 5. 构建旋转矩阵 (可以直接手动填充 3x3 部分)
+        // 5. 构建旋转矩阵
         glm::mat4 rotation = glm::mat4(1.0f);
         rotation[0] = glm::vec4(right, 0.0f);
         rotation[1] = glm::vec4(normal, 0.0f);
